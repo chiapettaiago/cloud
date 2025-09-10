@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chiapetta Cloud - Armazenamento em Nuvem</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Tela de Login -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-cloud"></i>
+                <h1>Chiapetta Cloud</h1>
+                <p>Seu armazenamento pessoal na nuvem</p>
+            </div>
+            
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-username">Usuário:</label>
+                    <input type="text" id="login-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Senha:</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit">Entrar</button>
+                <p class="auth-switch">
+                    Não tem conta? <a href="#" id="show-register">Cadastre-se</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tela de Cadastro -->
+    <div id="register-screen" class="screen">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-user-plus"></i>
+                <h1>Criar Conta</h1>
+                <p>Junte-se ao Chiapetta Cloud</p>
+            </div>
+            
+            <form id="register-form" class="auth-form">
+                <div class="form-group">
+                    <label for="register-username">Usuário:</label>
+                    <input type="text" id="register-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-email">Email:</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Senha:</label>
+                    <input type="password" id="register-password" required>
+                </div>
+                <button type="submit">Cadastrar</button>
+                <p class="auth-switch">
+                    Já tem conta? <a href="#" id="show-login">Entre aqui</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Principal -->
+    <div id="dashboard-screen" class="screen">
+        <header class="main-header">
+            <div class="header-left">
+                <i class="fas fa-cloud"></i>
+                <span class="logo">Chiapetta Cloud</span>
+            </div>
+            <div class="header-right">
+                <span id="username-display"></span>
+                <button id="logout-btn"><i class="fas fa-sign-out-alt"></i> Sair</button>
+            </div>
+        </header>
+
+        <div class="dashboard-container">
+            <aside class="sidebar">
+                <nav class="sidebar-nav">
+                    <a href="#" class="nav-item active" data-section="files">
+                        <i class="fas fa-folder"></i> Meus Arquivos
+                    </a>
+                    <a href="#" class="nav-item" data-section="upload">
+                        <i class="fas fa-upload"></i> Upload
+                    </a>
+                    <a href="#" class="nav-item" data-section="system">
+                        <i class="fas fa-server"></i> Sistema
+                    </a>
+                    <a href="#" class="nav-item" data-section="shares">
+                        <i class="fas fa-share-alt"></i> Compartilhamentos
+                    </a>
+                    <a href="#" class="nav-item" data-section="activities">
+                        <i class="fas fa-history"></i> Atividades
+                    </a>
+                    <a href="#" class="nav-item" data-section="profile">
+                        <i class="fas fa-user"></i> Perfil
+                    </a>
+                </nav>
+                
+                <div class="storage-info">
+                    <h4>Armazenamento</h4>
+                    <div class="storage-bar">
+                        <div id="storage-progress" class="storage-progress"></div>
+                    </div>
+                    <span id="storage-text">0 MB / 1 GB</span>
+                </div>
+            </aside>
+
+            <main class="main-content">
+                <!-- Seção Arquivos -->
+                <section id="files-section" class="content-section active">
+                    <div class="section-header">
+                        <h2>Meus Arquivos</h2>
+                        <button id="refresh-files" class="btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Atualizar
+                        </button>
+                    </div>
+                    
+                    <div class="files-toolbar">
+                        <input type="text" id="file-search" placeholder="Buscar arquivos...">
+                        <select id="file-filter">
+                            <option value="">Todos os tipos</option>
+                            <option value="image">Imagens</option>
+                            <option value="text">Documentos</option>
+                            <option value="application">Aplicações</option>
+                            <option value="video">Vídeos</option>
+                            <option value="audio">Áudio</option>
+                        </select>
+                    </div>
+
+                    <div id="files-container" class="files-grid">
+                        <!-- Arquivos serão carregados aqui -->
+                    </div>
+                </section>
+
+                <!-- Seção Upload -->
+                <section id="upload-section" class="content-section">
+                    <div class="section-header">
+                        <h2>Upload de Arquivos</h2>
+                    </div>
+                    
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <h3>Arraste arquivos aqui</h3>
+                            <p>ou clique para selecionar</p>
+                            <input type="file" id="file-input" multiple>
+                        </div>
+                    </div>
+
+                    <div id="upload-progress-container"></div>
+                </section>
+
+                <!-- Seção Sistema -->
+                <section id="system-section" class="content-section">
+                    <div class="section-header">
+                        <h2>Informações do Sistema</h2>
+                        <button id="refresh-system" class="btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Atualizar
+                        </button>
+                    </div>
+                    
+                    <div class="system-stats">
+                        <div class="stat-card">
+                            <h4>CPU</h4>
+                            <div class="stat-progress">
+                                <div id="cpu-progress" class="progress-bar"></div>
+                            </div>
+                            <span id="cpu-text">0%</span>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <h4>Memória</h4>
+                            <div class="stat-progress">
+                                <div id="memory-progress" class="progress-bar"></div>
+                            </div>
+                            <span id="memory-text">0%</span>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <h4>Disco</h4>
+                            <div class="stat-progress">
+                                <div id="disk-progress" class="progress-bar"></div>
+                            </div>
+                            <span id="disk-text">0%</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Seção Compartilhamentos -->
+                <section id="shares-section" class="content-section">
+                    <div class="section-header">
+                        <h2>Compartilhamentos</h2>
+                        <button id="refresh-shares" class="btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Atualizar
+                        </button>
+                    </div>
+                    
+                    <div class="shares-toolbar">
+                        <button id="create-share-btn" class="btn-primary">
+                            <i class="fas fa-plus"></i> Novo Compartilhamento
+                        </button>
+                    </div>
+
+                    <div id="shares-container" class="shares-grid">
+                        <!-- Compartilhamentos serão carregados aqui -->
+                    </div>
+                </section>
+
+                <!-- Seção Atividades -->
+                <section id="activities-section" class="content-section">
+                    <div class="section-header">
+                        <h2>Registro de Atividades</h2>
+                        <button id="refresh-activities" class="btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Atualizar
+                        </button>
+                    </div>
+                    
+                    <div id="activities-container" class="activities-list">
+                        <!-- Atividades serão carregadas aqui -->
+                    </div>
+                </section>
+
+                <!-- Seção Perfil -->
+                <section id="profile-section" class="content-section">
+                    <div class="section-header">
+                        <h2>Meu Perfil</h2>
+                    </div>
+                    
+                    <div class="profile-info">
+                        <div class="profile-field">
+                            <label>Usuário:</label>
+                            <span id="profile-username"></span>
+                        </div>
+                        <div class="profile-field">
+                            <label>Email:</label>
+                            <span id="profile-email"></span>
+                        </div>
+                        <div class="profile-field">
+                            <label>Quota de Armazenamento:</label>
+                            <span id="profile-quota"></span>
+                        </div>
+                        <div class="profile-field">
+                            <label>Armazenamento Usado:</label>
+                            <span id="profile-used"></span>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal para Execução de Arquivos -->
+    <div id="execution-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Executar Arquivo</h3>
+                <span class="close" data-modal="execution-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Executando: <span id="executing-file"></span></p>
+                <div class="execution-output">
+                    <h4>Saída:</h4>
+                    <pre id="execution-stdout"></pre>
+                    <h4>Erros:</h4>
+                    <pre id="execution-stderr"></pre>
+                    <h4>Código de Saída:</h4>
+                    <span id="execution-exitcode"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Compartilhamento -->
+    <div id="share-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Criar Compartilhamento</h3>
+                <span class="close" data-modal="share-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="share-form">
+                    <div class="form-group">
+                        <label>Arquivo/Pasta:</label>
+                        <span id="share-resource-name"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="share-type">Tipo de Compartilhamento:</label>
+                        <select id="share-type">
+                            <option value="public">Link público</option>
+                            <option value="user">Compartilhar com usuário específico</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="share-user-group" style="display: none;">
+                        <label for="share-username">Nome do usuário:</label>
+                        <input type="text" id="share-username" placeholder="Digite o nome do usuário">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="share-password-enabled"> Proteger com senha
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" id="share-password-group" style="display: none;">
+                        <label for="share-password">Senha:</label>
+                        <input type="password" id="share-password" placeholder="Digite uma senha">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="share-expires-enabled"> Definir expiração
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" id="share-expires-group" style="display: none;">
+                        <label for="share-expires-days">Expira em (dias):</label>
+                        <input type="number" id="share-expires-days" value="7" min="1" max="365">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="share-can-edit"> Permitir edição
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="share-can-download" checked> Permitir download
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary">Criar Compartilhamento</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Visualizar Arquivo -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 id="preview-title">Visualizar Arquivo</h3>
+                <span class="close" data-modal="preview-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="preview-content">
+                    <!-- Conteúdo do preview será carregado aqui -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast para notificações -->
+    <div id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

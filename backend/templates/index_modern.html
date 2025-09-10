@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chiapetta Cloud - Armazenamento em Nuvem</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_modern.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Tela de Login -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-cloud"></i>
+                <h1>Chiapetta Cloud</h1>
+                <p>Seu armazenamento pessoal na nuvem</p>
+            </div>
+            
+            <div class="form-container">
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-username">Usuário</label>
+                        <input type="text" id="login-username" class="form-control" placeholder="Digite seu usuário" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Senha</label>
+                        <input type="password" id="login-password" class="form-control" placeholder="Digite sua senha" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt"></i>
+                        Entrar
+                    </button>
+                    <div class="text-center mt-2">
+                        <a href="#" id="show-register" class="link-button">Não tem conta? Cadastre-se</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tela de Cadastro -->
+    <div id="register-screen" class="screen">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-user-plus"></i>
+                <h1>Criar Conta</h1>
+                <p>Junte-se ao Chiapetta Cloud</p>
+            </div>
+            
+            <div class="form-container">
+                <form id="register-form">
+                    <div class="form-group">
+                        <label for="register-username">Usuário</label>
+                        <input type="text" id="register-username" class="form-control" placeholder="Escolha um usuário" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-email">Email</label>
+                        <input type="email" id="register-email" class="form-control" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="register-password">Senha</label>
+                        <input type="password" id="register-password" class="form-control" placeholder="Crie uma senha segura" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i>
+                        Cadastrar
+                    </button>
+                    <div class="text-center mt-2">
+                        <a href="#" id="show-login" class="link-button">Já tem conta? Entre aqui</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Principal -->
+    <div id="dashboard-screen" class="screen">
+        <div class="dashboard">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2><i class="fas fa-cloud"></i> Chiapetta Cloud</h2>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="#" class="nav-item active" data-section="files">
+                        <i class="fas fa-folder"></i>
+                        Meus Arquivos
+                    </a>
+                    <a href="#" class="nav-item" data-section="recent">
+                        <i class="fas fa-clock"></i>
+                        Recentes
+                    </a>
+                    <a href="#" class="nav-item" data-section="shares">
+                        <i class="fas fa-share-alt"></i>
+                        Compartilhados
+                    </a>
+                    <a href="#" class="nav-item" data-section="favorites">
+                        <i class="fas fa-star"></i>
+                        Favoritos
+                    </a>
+                    <a href="#" class="nav-item" data-section="trash">
+                        <i class="fas fa-trash"></i>
+                        Lixeira
+                    </a>
+                    <div style="margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                        <a href="#" class="nav-item" data-section="activities">
+                            <i class="fas fa-history"></i>
+                            Atividades
+                        </a>
+                        <a href="#" class="nav-item" data-section="system">
+                            <i class="fas fa-server"></i>
+                            Sistema
+                        </a>
+                        <a href="#" class="nav-item" data-section="profile">
+                            <i class="fas fa-user-cog"></i>
+                            Configurações
+                        </a>
+                    </div>
+                </nav>
+            </div>
+
+            <!-- Conteúdo Principal -->
+            <div class="main-content">
+                <!-- Header -->
+                <div class="header">
+                    <div class="header-content">
+                        <h1 class="header-title" id="section-title">Meus Arquivos</h1>
+                        <div class="header-actions">
+                            <div class="user-menu-container">
+                                <div class="user-menu" onclick="toggleUserMenu()">
+                                    <i class="fas fa-user-circle"></i>
+                                    <span id="username-display">Usuário</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                                <div class="user-dropdown" id="user-dropdown">
+                                    <div class="user-dropdown-item" onclick="showSection('profile')">
+                                        <i class="fas fa-user-cog"></i>
+                                        Configurações
+                                    </div>
+                                    <div class="user-dropdown-item" onclick="showUserInfo()">
+                                        <i class="fas fa-info-circle"></i>
+                                        Informações da Conta
+                                    </div>
+                                    <div class="user-dropdown-divider"></div>
+                                    <div class="user-dropdown-item logout-item" onclick="logout()">
+                                        <i class="fas fa-sign-out-alt"></i>
+                                        Sair
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Área de Conteúdo -->
+                <div class="content-area">
+                    <!-- Seção de Arquivos -->
+                    <div id="files-section" class="content-section active">
+                        <!-- Breadcrumb -->
+                        <div class="breadcrumb-container">
+                            <nav class="breadcrumb" id="breadcrumb">
+                                <a href="#" class="breadcrumb-item" data-folder-id="0">
+                                    <i class="fas fa-home"></i> Início
+                                </a>
+                            </nav>
+                        </div>
+
+                        <!-- Toolbar -->
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <button class="btn btn-primary" onclick="showCreateFolderModal()">
+                                    <i class="fas fa-folder-plus"></i>
+                                    Nova Pasta
+                                </button>
+                                <button class="btn btn-success" onclick="showUploadModal()">
+                                    <i class="fas fa-upload"></i>
+                                    Upload
+                                </button>
+                            </div>
+                            <div class="toolbar-right">
+                                <div class="search-box">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" placeholder="Pesquisar arquivos..." id="search-input">
+                                </div>
+                                <button class="btn btn-secondary" onclick="toggleView()" title="Alternar visualização">
+                                    <i class="fas fa-th" id="view-toggle-icon"></i>
+                                </button>
+                                <button class="btn btn-secondary" onclick="refreshFiles()" title="Atualizar">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Grid de Arquivos e Pastas -->
+                        <div id="files-grid" class="files-grid">
+                            <!-- Conteúdo será carregado dinamicamente -->
+                        </div>
+
+                        <!-- Estado Vazio -->
+                        <div id="empty-state" class="empty-state d-none">
+                            <i class="fas fa-folder-open"></i>
+                            <h3>Pasta vazia</h3>
+                            <p>Adicione alguns arquivos ou crie uma nova pasta para começar.</p>
+                            <button class="btn btn-primary mt-2" onclick="showUploadModal()">
+                                <i class="fas fa-upload"></i>
+                                Fazer Upload
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Seção de Arquivos Recentes -->
+                    <div id="recent-section" class="content-section">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h2>Arquivos Recentes</h2>
+                            </div>
+                        </div>
+                        <div id="recent-files-grid" class="files-grid">
+                            <!-- Conteúdo será carregado dinamicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Outras seções existentes -->
+                    <div id="shares-section" class="content-section">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h2>Compartilhamentos</h2>
+                            </div>
+                        </div>
+                        <div id="shares-container">
+                            <!-- Conteúdo será carregado dinamicamente -->
+                        </div>
+                    </div>
+
+                    <div id="activities-section" class="content-section">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h2>Atividades Recentes</h2>
+                            </div>
+                        </div>
+                        <div id="activities-container">
+                            <!-- Conteúdo será carregado dinamicamente -->
+                        </div>
+                    </div>
+
+                    <div id="system-section" class="content-section">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h2>Informações do Sistema</h2>
+                            </div>
+                        </div>
+                        <div id="system-info-container">
+                            <!-- Conteúdo será carregado dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Upload de Arquivos -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Upload de Arquivos</h3>
+                <button class="modal-close" onclick="closeModal('upload-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h3>Solte arquivos aqui</h3>
+                    <p>ou clique para selecionar</p>
+                    <input type="file" id="file-input" multiple style="display: none;">
+                </div>
+                <div id="upload-progress-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Criar Pasta -->
+    <div id="create-folder-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Nova Pasta</h3>
+                <button class="modal-close" onclick="closeModal('create-folder-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="create-folder-form">
+                    <div class="form-group">
+                        <label for="folder-name">Nome da Pasta</label>
+                        <input type="text" id="folder-name" class="form-control" placeholder="Digite o nome da pasta" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('create-folder-modal')">Cancelar</button>
+                <button class="btn btn-primary" onclick="createFolder()">
+                    <i class="fas fa-folder-plus"></i>
+                    Criar Pasta
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Compartilhamento -->
+    <div id="share-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Compartilhar</h3>
+                <button class="modal-close" onclick="closeModal('share-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="share-form">
+                    <div class="form-group">
+                        <label for="share-type">Tipo de Compartilhamento</label>
+                        <select id="share-type" class="form-control">
+                            <option value="public">Público (qualquer pessoa com o link)</option>
+                            <option value="private">Privado (apenas usuários específicos)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="share-permission">Permissão</label>
+                        <select id="share-permission" class="form-control">
+                            <option value="read">Apenas visualizar</option>
+                            <option value="write">Visualizar e editar</option>
+                        </select>
+                    </div>
+                    <div id="share-link-container" class="form-group d-none">
+                        <label>Link de Compartilhamento</label>
+                        <div class="d-flex">
+                            <input type="text" id="share-link" class="form-control" readonly>
+                            <button type="button" class="btn btn-secondary" onclick="copyShareLink()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('share-modal')">Cancelar</button>
+                <button class="btn btn-primary" onclick="createShare()">
+                    <i class="fas fa-share-alt"></i>
+                    Compartilhar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Informações do Usuário -->
+    <div id="user-info-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Informações da Conta</h3>
+                <button class="modal-close" onclick="closeModal('user-info-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="user-info-grid">
+                    <div class="user-info-item">
+                        <i class="fas fa-user"></i>
+                        <div>
+                            <strong>Usuário</strong>
+                            <span id="modal-username">-</span>
+                        </div>
+                    </div>
+                    <div class="user-info-item">
+                        <i class="fas fa-envelope"></i>
+                        <div>
+                            <strong>Email</strong>
+                            <span id="modal-email">-</span>
+                        </div>
+                    </div>
+                    <div class="user-info-item">
+                        <i class="fas fa-hdd"></i>
+                        <div>
+                            <strong>Armazenamento</strong>
+                            <div class="storage-info">
+                                <div class="storage-bar">
+                                    <div class="storage-used" id="storage-bar"></div>
+                                </div>
+                                <span id="storage-text">0 MB de 1 GB usado</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-info-item">
+                        <i class="fas fa-calendar-alt"></i>
+                        <div>
+                            <strong>Membro desde</strong>
+                            <span id="modal-member-since">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('user-info-modal')">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Preview de Arquivos -->
+    <div id="file-preview-modal" class="modal modal-large">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="preview-file-name">Visualizar Arquivo</h3>
+                <div class="preview-actions">
+                    <button class="btn btn-secondary" onclick="downloadCurrentPreviewFile()" title="Download">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button class="btn btn-secondary" onclick="shareCurrentPreviewFile()" title="Compartilhar">
+                        <i class="fas fa-share-alt"></i>
+                    </button>
+                    <button class="modal-close" onclick="closeModal('file-preview-modal')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" id="file-preview-body">
+                <!-- Conteúdo do preview será carregado aqui -->
+            </div>
+            <div class="modal-footer" id="file-preview-footer">
+                <div class="file-preview-info">
+                    <span id="preview-file-size"></span>
+                    <span id="preview-file-type"></span>
+                    <span id="preview-file-date"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Editor de Texto -->
+    <div id="text-editor-modal" class="modal modal-large">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="editor-file-name">Editor de Texto</h3>
+                <div class="editor-actions">
+                    <button class="btn btn-success" onclick="saveTextFile()" title="Salvar" id="save-text-btn">
+                        <i class="fas fa-save"></i> Salvar
+                    </button>
+                    <button class="btn btn-secondary" onclick="downloadCurrentPreviewFile()" title="Download">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button class="modal-close" onclick="closeModal('text-editor-modal')">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="text-editor-container">
+                    <div class="editor-toolbar">
+                        <select id="editor-language" onchange="changeEditorLanguage()">
+                            <option value="text">Texto</option>
+                            <option value="javascript">JavaScript</option>
+                            <option value="python">Python</option>
+                            <option value="html">HTML</option>
+                            <option value="css">CSS</option>
+                            <option value="json">JSON</option>
+                            <option value="markdown">Markdown</option>
+                            <option value="xml">XML</option>
+                            <option value="sql">SQL</option>
+                        </select>
+                        <button class="btn btn-sm" onclick="formatCode()" title="Formatar código">
+                            <i class="fas fa-indent"></i>
+                        </button>
+                        <button class="btn btn-sm" onclick="toggleWordWrap()" title="Quebra de linha" id="wrap-btn">
+                            <i class="fas fa-align-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="text-editor" placeholder="Digite seu texto aqui..."></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu de contexto -->
+    <div id="context-menu" class="context-menu d-none">
+        <div class="context-menu-item" onclick="previewSelectedFile()">
+            <i class="fas fa-eye"></i>
+            Visualizar
+        </div>
+        <div class="context-menu-item" onclick="downloadFile()">
+            <i class="fas fa-download"></i>
+            Download
+        </div>
+        <div class="context-menu-item" onclick="showShareModal()">
+            <i class="fas fa-share-alt"></i>
+            Compartilhar
+        </div>
+        <div class="context-menu-item" onclick="editSelectedFile()">
+            <i class="fas fa-edit"></i>
+            Editar
+        </div>
+        <div class="context-menu-item" onclick="renameFile()">
+            <i class="fas fa-signature"></i>
+            Renomear
+        </div>
+        <div class="context-menu-item" onclick="moveToTrash()">
+            <i class="fas fa-trash"></i>
+            Mover para lixeira
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script_modern.js') }}"></script>
+</body>
+</html>
