@@ -1073,27 +1073,15 @@ async function previewPdf(fileData) {
     title.textContent = fileData.filename;
     updatePreviewInfo(fileData);
     
-    // Para PDF, criar URL com autenticação
-    fetch(`/api/stream/${fileData.id}`, {
-        headers: {
-            'Authorization': `Bearer ${authToken}`
-        }
-    })
-    .then(response => response.blob())
-    .then(blob => {
-        const url = URL.createObjectURL(blob);
-        body.innerHTML = `
-            <div class="file-preview-content">
-                <iframe src="${url}" 
-                        class="preview-pdf"
-                        frameborder="0">
-                </iframe>
-            </div>
-        `;
-    })
-    .catch(error => {
-        showPreviewError('Erro ao carregar PDF');
-    });
+    const url = `/api/stream/${fileData.id}?jwt=${encodeURIComponent(authToken)}`;
+    body.innerHTML = `
+        <div class="file-preview-content">
+            <iframe src="${url}" 
+                    class="preview-pdf"
+                    frameborder="0">
+            </iframe>
+        </div>
+    `;
     
     showModal('file-preview-modal');
 }
@@ -1106,27 +1094,15 @@ async function previewVideo(fileData) {
     title.textContent = fileData.filename;
     updatePreviewInfo(fileData);
     
-    // Para vídeo, criar URL com autenticação  
-    fetch(`/api/stream/${fileData.id}`, {
-        headers: {
-            'Authorization': `Bearer ${authToken}`
-        }
-    })
-    .then(response => response.blob())
-    .then(blob => {
-        const url = URL.createObjectURL(blob);
-        body.innerHTML = `
-            <div class="file-preview-content">
-                <video controls class="preview-video">
-                    <source src="${url}" type="${fileData.mime_type}">
-                    Seu navegador não suporta o elemento de vídeo.
-                </video>
-            </div>
-        `;
-    })
-    .catch(error => {
-        showPreviewError('Erro ao carregar vídeo');
-    });
+    const url = `/api/stream/${fileData.id}?jwt=${encodeURIComponent(authToken)}`;
+    body.innerHTML = `
+        <div class="file-preview-content">
+            <video controls class="preview-video">
+                <source src="${url}" type="${fileData.mime_type}">
+                Seu navegador não suporta o elemento de vídeo.
+            </video>
+        </div>
+    `;
     
     showModal('file-preview-modal');
 }
@@ -1139,33 +1115,21 @@ async function previewAudio(fileData) {
     title.textContent = fileData.filename;
     updatePreviewInfo(fileData);
     
-    // Para áudio, criar URL com autenticação
-    fetch(`/api/stream/${fileData.id}`, {
-        headers: {
-            'Authorization': `Bearer ${authToken}`
-        }
-    })
-    .then(response => response.blob())
-    .then(blob => {
-        const url = URL.createObjectURL(blob);
-        body.innerHTML = `
-            <div class="file-preview-content">
-                <div class="audio-preview-container">
-                    <div class="audio-preview-icon">
-                        <i class="fas fa-music"></i>
-                    </div>
-                    <h3>${fileData.filename}</h3>
-                    <audio controls class="preview-audio">
-                        <source src="${url}" type="${fileData.mime_type}">
-                        Seu navegador não suporta o elemento de áudio.
-                    </audio>
+    const url = `/api/stream/${fileData.id}?jwt=${encodeURIComponent(authToken)}`;
+    body.innerHTML = `
+        <div class="file-preview-content">
+            <div class="audio-preview-container">
+                <div class="audio-preview-icon">
+                    <i class="fas fa-music"></i>
                 </div>
+                <h3>${fileData.filename}</h3>
+                <audio controls class="preview-audio">
+                    <source src="${url}" type="${fileData.mime_type}">
+                    Seu navegador não suporta o elemento de áudio.
+                </audio>
             </div>
-        `;
-    })
-    .catch(error => {
-        showPreviewError('Erro ao carregar áudio');
-    });
+        </div>
+    `;
     
     showModal('file-preview-modal');
 }

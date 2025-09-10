@@ -9,6 +9,7 @@ from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, send_file, render_template
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
+from flask_jwt_extended import decode_token
 from flask_cors import CORS
 import bcrypt
 try:
@@ -775,6 +776,7 @@ def stream_file(file_id):
     Suporta Range requests para mídia.
     """
     share_token = request.args.get('token')
+    jwt_param = request.args.get('jwt')
 
     # Resolução de permissões
     file = None
@@ -786,6 +788,14 @@ def stream_file(file_id):
         if share.expires_at and share.expires_at < datetime.utcnow():
             return jsonify({'error': 'Link expirado'}), 410
         file = share.file
+    elif jwt_param:
+        # Acesso via JWT no query param (para players/iframes sem header)
+        try:
+            decoded = decode_token(jwt_param)
+            user_id = int(decoded.get('sub'))
+            file = File.query.filter_by(id=file_id, user_id=user_id).first()
+        except Exception:
+            return jsonify({'error': 'JWT inválido'}), 403
     else:
         # Acesso autenticado via JWT
         try:
