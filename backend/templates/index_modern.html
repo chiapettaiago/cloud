@@ -6,6 +6,7 @@
     <title>Chiapetta Cloud - Armazenamento em Nuvem</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style_modern.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Tela de Login -->
@@ -111,6 +112,10 @@
                         <a href="#" class="nav-item" data-section="system">
                             <i class="fas fa-server"></i>
                             Sistema
+                        </a>
+                        <a href="#" class="nav-item" data-section="users">
+                            <i class="fas fa-users"></i>
+                            Usuários
                         </a>
                         <a href="#" class="nav-item" data-section="profile">
                             <i class="fas fa-user-cog"></i>
@@ -251,7 +256,121 @@
                             </div>
                         </div>
                         <div id="system-info-container">
-                            <!-- Conteúdo será carregado dinamicamente -->
+                            <div class="system-grid">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3><i class="fas fa-microchip"></i> Uso de CPU</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <canvas id="cpuChart" height="120"></canvas>
+                                    </div>
+                                </div>
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3><i class="fas fa-memory"></i> Memória</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <canvas id="memChart" height="120"></canvas>
+                                        <div class="mt-2 text-muted" id="mem-stats"></div>
+                                    </div>
+                                </div>
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h3><i class="fas fa-hdd"></i> Disco</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <canvas id="diskChart" height="120"></canvas>
+                                        <div class="mt-2 text-muted" id="disk-stats"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="profile-section" class="content-section">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h2>Configurações</h2>
+                            </div>
+                        </div>
+                        <div class="settings-container">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3><i class="fas fa-database"></i> Banco de Dados (MySQL)</h3>
+                                </div>
+                                <div class="card-body">
+                                    <form id="db-settings-form">
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label>Host</label>
+                                                <input type="text" id="db-host" class="form-control" placeholder="ex: db.example.com">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Porta</label>
+                                                <input type="number" id="db-port" class="form-control" placeholder="3306" value="3306">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Banco</label>
+                                                <input type="text" id="db-name" class="form-control" placeholder="cloud_storage">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Usuário</label>
+                                                <input type="text" id="db-user" class="form-control" placeholder="usuario">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Senha</label>
+                                                <input type="password" id="db-pass" class="form-control" placeholder="••••••">
+                                                <small id="db-pass-hint" class="form-hint"></small>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <label><input type="checkbox" id="db-apply-now"> Aplicar agora (reinicializa a conexão)</label>
+                                        </div>
+                                        <div class="mt-2">
+                                            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Salvar</button>
+                                            <button type="button" class="btn btn-secondary" onclick="loadDbSettings()"><i class="fas fa-sync-alt"></i> Recarregar</button>
+                                            <button type="button" class="btn btn-secondary" onclick="testDbConnection()"><i class="fas fa-plug"></i> Testar conexão</button>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small>Em uso: <code id="db-in-use"></code></small>
+                                            <div id="db-ping-status" class="form-hint"></div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="users-section" class="content-section">
+                        <div class="toolbar">
+                            <div class="toolbar-left">
+                                <h2>Gerenciar Usuários</h2>
+                            </div>
+                            <div class="toolbar-right">
+                                <button class="btn btn-primary" onclick="showCreateUserModal()">
+                                    <i class="fas fa-user-plus"></i>
+                                    Criar Usuário
+                                </button>
+                            </div>
+                        </div>
+                        <div class="users-container">
+                            <div class="users-table-container">
+                                <table class="users-table" id="users-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Usuário</th>
+                                            <th>Email</th>
+                                            <th>Tipo</th>
+                                            <th>Armazenamento</th>
+                                            <th>Criado em</th>
+                                            <th>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-table-body">
+                                        <!-- Será carregado dinamicamente -->
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -481,6 +600,62 @@
         </div>
     </div>
 
+    <!-- Modal para Criar/Editar Usuário -->
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="user-modal-title">Criar Usuário</h3>
+                <button class="modal-close" onclick="closeModal('user-modal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="user-form">
+                    <input type="hidden" id="user-id" value="">
+                    <div class="form-group">
+                        <label for="user-username">Nome de usuário</label>
+                        <input type="text" id="user-username" class="form-control" placeholder="Digite o nome de usuário" required>
+                        <small class="form-hint">Será usado como login</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-email">Email</label>
+                        <input type="email" id="user-email" class="form-control" placeholder="email@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-password">Senha</label>
+                        <input type="password" id="user-password" class="form-control" placeholder="Digite a senha">
+                        <small id="user-password-hint" class="form-hint">Mínimo 6 caracteres</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-storage-quota">Quota de armazenamento (bytes)</label>
+                        <select id="user-storage-quota" class="form-control">
+                            <option value="1073741824">1 GB</option>
+                            <option value="5368709120">5 GB</option>
+                            <option value="10737418240">10 GB</option>
+                            <option value="21474836480">20 GB</option>
+                            <option value="53687091200">50 GB</option>
+                            <option value="107374182400">100 GB</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="user-is-admin">
+                            Conta de administrador
+                        </label>
+                        <small class="form-hint">Administradores podem gerenciar outros usuários e configurações</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('user-modal')">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveUser()">
+                    <i class="fas fa-save"></i>
+                    <span id="user-save-text">Criar Usuário</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Menu de contexto -->
     <div id="context-menu" class="context-menu d-none">
         <div class="context-menu-item" onclick="previewSelectedFile()">
@@ -505,7 +680,7 @@
         </div>
         <div class="context-menu-item" onclick="moveToTrash()">
             <i class="fas fa-trash"></i>
-            Mover para lixeira
+            Excluir
         </div>
     </div>
 

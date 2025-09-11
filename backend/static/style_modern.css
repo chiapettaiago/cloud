@@ -1,3 +1,42 @@
+/* Configurações */
+.settings-container { padding: 1rem; }
+.settings-container .card { background: var(--card-bg); border-radius: var(--border-radius); box-shadow: var(--shadow); }
+.settings-container .card-header { padding: 1rem; border-bottom: 1px solid var(--border-color); }
+.settings-container .card-body { padding: 1rem; }
+.settings-container .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.settings-container .form-hint { color: var(--muted-text); }
+.settings-container .mt-2 { margin-top: 0.75rem; }
+
+/* Sistema - gráficos */
+.system-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+.system-grid .card {
+    background: var(--card-bg);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+}
+.system-grid .card-header { padding: 1rem; border-bottom: 1px solid var(--border-color); }
+.system-grid .card-body { padding: 1rem; height: 260px; }
+
+/* Gerenciamento de usuários */
+.users-container { padding: 1rem; }
+.users-table-container { background: var(--card-bg); border-radius: var(--border-radius); box-shadow: var(--shadow); overflow: hidden; }
+.users-table { width: 100%; border-collapse: collapse; }
+.users-table th, .users-table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+.users-table th { background: var(--primary-color); color: white; font-weight: 500; }
+.users-table tr:hover { background: var(--hover-bg); }
+.user-actions { white-space: nowrap; }
+.user-actions .btn { margin-right: 0.5rem; }
+.admin-badge { background: var(--accent-color); color: white; padding: 0.2rem 0.5rem; border-radius: 3px; font-size: 0.8rem; margin-left: 0.5rem; }
+.badge { padding: 0.3rem 0.6rem; border-radius: 15px; font-size: 0.8rem; font-weight: 500; }
+.badge-admin { background: var(--accent-color); color: white; }
+.badge-user { background: var(--muted-bg); color: var(--text-color); }
+.storage-info .storage-bar { width: 100px; height: 4px; background: var(--muted-bg); border-radius: 2px; margin-bottom: 0.2rem; }
+.storage-info .storage-used { height: 100%; background: var(--accent-color); border-radius: 2px; }
 /* Reset e variáveis CSS modernas */
 * {
     margin: 0;
@@ -28,6 +67,7 @@
     --font-size-xl: 1.25rem;
     --font-size-2xl: 1.5rem;
     --font-size-3xl: 1.875rem;
+    --card-bg: #ffffff;
 }
 
 body {

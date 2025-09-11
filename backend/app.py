@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import hashlib
 import subprocess
 import mimetypes
@@ -24,8 +25,55 @@ import psutil
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///cloud_storage.db'
+
+# Utilitários para configuração de BD
+INSTANCE_DIR = os.path.join(os.path.dirname(__file__), 'instance')
+os.makedirs(INSTANCE_DIR, exist_ok=True)
+DB_CONFIG_PATH = os.path.join(INSTANCE_DIR, 'db_config.json')
+
+def _build_mysql_uri(host, port, dbname, user, password):
+    try:
+        import urllib.parse as _urlparse
+        qpass = _urlparse.quote_plus(password or '')
+    except Exception:
+        qpass = password or ''
+    port = str(port or '3306')
+    return f"mysql+pymysql://{user}:{qpass}@{host}:{port}/{dbname}?charset=utf8mb4"
+
+def load_db_url_from_file():
+    try:
+        if os.path.exists(DB_CONFIG_PATH):
+            with open(DB_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+                if cfg.get('type') == 'mysql':
+                    return _build_mysql_uri(
+                        cfg.get('host'), cfg.get('port'), cfg.get('db'), cfg.get('user'), cfg.get('password')
+                    )
+    except Exception as e:
+        print(f"Aviso: falha ao ler db_config.json: {e}")
+    return None
+
+# Configuração de Banco de Dados (prioridade):
+# 1) DATABASE_URL (env)  2) db_config.json (GUI)  3) MYSQL_* envs  4) SQLite local
+db_url = os.environ.get('DATABASE_URL') or load_db_url_from_file()
+if not db_url:
+    mysql_host = os.environ.get('MYSQL_HOST')
+    mysql_db = os.environ.get('MYSQL_DB')
+    mysql_user = os.environ.get('MYSQL_USER')
+    mysql_password = os.environ.get('MYSQL_PASSWORD')
+    mysql_port = os.environ.get('MYSQL_PORT', '3306')
+    if mysql_host and mysql_db and mysql_user and mysql_password:
+        db_url = _build_mysql_uri(mysql_host, mysql_port, mysql_db, mysql_user, mysql_password)
+
+if not db_url:
+    db_url = 'sqlite:///cloud_storage.db'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 280
+}
 app.config['JWT_SECRET_KEY'] = 'jwt-secret-change-this'
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
@@ -45,7 +93,8 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    storage_quota = db.Column(db.Integer, default=1073741824)  # 1GB em bytes
+    storage_quota = db.Column(db.BigInteger, default=1073741824)  # bytes
+    is_admin = db.Column(db.Boolean, default=False)  # Campo para identificar administradores
     
     def set_password(self, password):
         self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -58,7 +107,7 @@ class File(db.Model):
     filename = db.Column(db.String(255), nullable=False)
     original_name = db.Column(db.String(255), nullable=False)
     file_path = db.Column(db.String(500), nullable=False)
-    file_size = db.Column(db.Integer, nullable=False)
+    file_size = db.Column(db.BigInteger, nullable=False)
     mime_type = db.Column(db.String(100))
     file_hash = db.Column(db.String(64))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -120,7 +169,7 @@ class FileVersion(db.Model):
     file_id = db.Column(db.Integer, db.ForeignKey('file.id'), nullable=False)
     version_number = db.Column(db.Integer, nullable=False)
     file_path = db.Column(db.String(500), nullable=False)
-    file_size = db.Column(db.Integer, nullable=False)
+    file_size = db.Column(db.BigInteger, nullable=False)
     file_hash = db.Column(db.String(64), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -150,6 +199,437 @@ class ExecutionLog(db.Model):
     error_output = db.Column(db.Text)
     exit_code = db.Column(db.Integer)
     executed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+def run_simple_migrations():
+    """Aplica migrações simples compatíveis com MySQL, como ajuste de tipos."""
+    try:
+        eng = db.engine
+        if not getattr(eng.url, 'drivername', '').startswith('mysql'):
+            return
+        from sqlalchemy import text
+        with eng.connect() as conn:
+            # Ajustar colunas que podem estourar INT
+            try:
+                conn.execute(text("ALTER TABLE user MODIFY storage_quota BIGINT"))
+            except Exception as e:
+                print(f"Aviso: ALTER user.storage_quota: {e}")
+            try:
+                conn.execute(text("ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            except Exception as e:
+                print(f"Aviso: ALTER user.is_admin: {e}")
+            try:
+                conn.execute(text("ALTER TABLE file MODIFY file_size BIGINT"))
+            except Exception as e:
+                print(f"Aviso: ALTER file.file_size: {e}")
+            try:
+                conn.execute(text("ALTER TABLE file_version MODIFY file_size BIGINT"))
+            except Exception as e:
+                print(f"Aviso: ALTER file_version.file_size: {e}")
+    except Exception as e:
+        print(f"Aviso: falha ao executar migrações simples: {e}")
+
+
+# ===== Endpoints de Configuração e Administração (GUI) =====
+
+def backfill_admin_flag():
+    """Garante que o usuário 'admin' existente esteja com is_admin=True.
+    Idempotente e silencioso em caso de falhas menores.
+    """
+    try:
+        admin_user = User.query.filter_by(username='admin').first()
+        if admin_user and not getattr(admin_user, 'is_admin', False):
+            admin_user.is_admin = True
+            db.session.commit()
+            print("🔧 Backfill aplicado: 'admin' marcado como is_admin=True")
+    except Exception as e:
+        # Em alguns cenários (ex: coluna ausente), ignore silenciosamente
+        print(f"Aviso: backfill admin.is_admin falhou: {e}")
+
+def _require_admin():
+    try:
+        uid = int(get_jwt_identity())
+        user = User.query.get(uid)
+        if not user or not user.is_admin:
+            return False
+        return True
+    except Exception:
+        return False
+
+def _get_admin_user():
+    """Retorna o usuário admin atual ou None."""
+    try:
+        uid = int(get_jwt_identity())
+        user = User.query.get(uid)
+        if user and user.is_admin:
+            return user
+        return None
+    except Exception:
+        return None
+
+@app.route('/api/settings/db', methods=['GET'])
+@jwt_required()
+def get_db_settings():
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+
+    # Prioridade do que está em uso agora para exibir
+    current_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
+    source = 'default'
+    host = port = dbname = user = None
+    has_password = False
+
+    try:
+        # Se existe arquivo, preferimos exibir seus valores (para edição)
+        if os.path.exists(DB_CONFIG_PATH):
+            with open(DB_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+                if cfg.get('type') == 'mysql':
+                    source = 'file'
+                    host = cfg.get('host')
+                    port = cfg.get('port')
+                    dbname = cfg.get('db')
+                    user = cfg.get('user')
+                    has_password = bool(cfg.get('password'))
+        else:
+            # Tentar inferir de env MYSQL_* ou DATABASE_URL
+            if os.environ.get('MYSQL_HOST') and os.environ.get('MYSQL_DB'):
+                source = 'env'
+                host = os.environ.get('MYSQL_HOST')
+                port = os.environ.get('MYSQL_PORT', '3306')
+                dbname = os.environ.get('MYSQL_DB')
+                user = os.environ.get('MYSQL_USER')
+                has_password = bool(os.environ.get('MYSQL_PASSWORD'))
+            elif os.environ.get('DATABASE_URL') and 'mysql' in os.environ.get('DATABASE_URL'):
+                source = 'env'
+                try:
+                    import urllib.parse as _urlparse
+                    u = _urlparse.urlparse(os.environ.get('DATABASE_URL'))
+                    host = u.hostname
+                    port = u.port or '3306'
+                    dbname = (u.path or '/').lstrip('/')
+                    user = u.username
+                    has_password = bool(u.password)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"Erro ao carregar configuração de DB: {e}")
+
+    return jsonify({
+        'in_use_uri': current_uri,
+        'source': source,
+        'type': 'mysql',
+        'host': host,
+        'port': str(port) if port else None,
+        'db': dbname,
+        'user': user,
+        'has_password': has_password
+    }), 200
+
+
+@app.route('/api/settings/db', methods=['POST'])
+@jwt_required()
+def set_db_settings():
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+    data = request.get_json() or {}
+    host = (data.get('host') or '').strip()
+    port = (data.get('port') or '3306')
+    dbname = (data.get('db') or '').strip()
+    usern = (data.get('user') or '').strip()
+    password = data.get('password')  # pode ser None/'' para manter a atual
+    apply_now = bool(data.get('apply_now', False))
+    force = bool(data.get('force', False))
+
+    if not host or not dbname or not usern:
+        return jsonify({'error': 'host, db e user são obrigatórios'}), 400
+
+    # Carregar config existente para preservar senha se usuário não enviar
+    existing = {}
+    if os.path.exists(DB_CONFIG_PATH):
+        try:
+            with open(DB_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                existing = json.load(f) or {}
+        except Exception:
+            existing = {}
+    if (password is None or password == '') and existing.get('password'):
+        password = existing['password']
+
+    new_uri = _build_mysql_uri(host, port, dbname, usern, password)
+
+    # Validar conexão (a menos que force=True)
+    if not force:
+        try:
+            from sqlalchemy import create_engine
+            test_engine = create_engine(new_uri, pool_pre_ping=True)
+            with test_engine.connect() as conn:
+                conn.execute("SELECT 1")
+        except Exception as e:
+            return jsonify({'error': f'Falha ao conectar: {str(e)}'}), 400
+
+    # Persistir arquivo
+    try:
+        with open(DB_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'type': 'mysql', 'host': host, 'port': str(port), 'db': dbname, 'user': usern, 'password': password}, f)
+    except Exception as e:
+        return jsonify({'error': f'Não foi possível salvar configuração: {str(e)}'}), 500
+
+    applied = False
+    # Se for forçado, não aplicar agora (evita travar ambiente)
+    if apply_now and not force:
+        old_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
+        try:
+            db.session.remove()
+            try:
+                db.engine.dispose()
+            except Exception:
+                pass
+            app.config['SQLALCHEMY_DATABASE_URI'] = new_uri
+            # Forçar reconexão e criar tabelas
+            with app.app_context():
+                # Toca no engine
+                _ = db.engine.connect()
+                _.close()
+                db.create_all()
+                # Migrações simples e usuários padrão no novo banco
+                try:
+                    run_simple_migrations()
+                    create_default_user()
+                    backfill_admin_flag()
+                except Exception as _e:
+                    print(f"Aviso: falha ao criar usuários padrão no novo BD: {_e}")
+            applied = True
+        except Exception as e:
+            # Reverter
+            app.config['SQLALCHEMY_DATABASE_URI'] = old_uri or 'sqlite:///cloud_storage.db'
+            try:
+                db.session.remove()
+                db.engine.dispose()
+            except Exception:
+                pass
+            return jsonify({'error': f'Falha ao aplicar configuração em tempo real: {str(e)}', 'saved': True, 'applied': False}), 200
+
+    return jsonify({'message': 'Configuração salva', 'saved': True, 'applied': applied}), 200
+
+
+@app.route('/api/settings/db/ping', methods=['GET'])
+@jwt_required()
+def ping_db_settings():
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+
+    # Montar URI a partir de arquivo (se existir), depois envs
+    uri = load_db_url_from_file() or os.environ.get('DATABASE_URL')
+    if not uri:
+        mysql_host = os.environ.get('MYSQL_HOST')
+        mysql_db = os.environ.get('MYSQL_DB')
+        mysql_user = os.environ.get('MYSQL_USER')
+        mysql_password = os.environ.get('MYSQL_PASSWORD')
+        mysql_port = os.environ.get('MYSQL_PORT', '3306')
+        if mysql_host and mysql_db and mysql_user and mysql_password:
+            uri = _build_mysql_uri(mysql_host, mysql_port, mysql_db, mysql_user, mysql_password)
+        else:
+            return jsonify({'status': 'no-config'}), 200
+
+    try:
+        from sqlalchemy import create_engine
+        eng = create_engine(uri, pool_pre_ping=True)
+        with eng.connect() as conn:
+            conn.execute("SELECT 1")
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 200
+
+
+# ===== Endpoints de Gerenciamento de Usuários (Admin) =====
+
+@app.route('/api/admin/users', methods=['GET'])
+@jwt_required()
+def list_users():
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+    
+    try:
+        users = User.query.all()
+        user_list = []
+        for user in users:
+            # Calcular uso de armazenamento
+            usage = get_user_storage_usage(user.id)
+            user_list.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'created_at': user.created_at.isoformat(),
+                'storage_quota': user.storage_quota,
+                'storage_used': usage,
+                'storage_percent': (usage / user.storage_quota * 100) if user.storage_quota > 0 else 0,
+                'is_admin': user.is_admin
+            })
+        return jsonify({'users': user_list}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/users', methods=['POST'])
+@jwt_required()
+def create_user():
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+    
+    data = request.get_json() or {}
+    username = (data.get('username') or '').strip()
+    email = (data.get('email') or '').strip()
+    password = (data.get('password') or '').strip()
+    is_admin = bool(data.get('is_admin', False))
+    storage_quota = data.get('storage_quota', 1073741824)  # 1GB padrão
+    
+    if not username or not email or not password:
+        return jsonify({'error': 'Username, email e senha são obrigatórios'}), 400
+    
+    # Verificar se já existe
+    if User.query.filter_by(username=username).first():
+        return jsonify({'error': 'Nome de usuário já existe'}), 400
+    
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email já cadastrado'}), 400
+    
+    try:
+        # Usar o username fornecido diretamente
+        user = User(username=username, email=email)
+        user.set_password(password)
+        user.storage_quota = int(storage_quota)
+        user.is_admin = is_admin  # Definir se é admin pelo campo booleano
+        
+        # Criar diretório do usuário
+        user_dir = os.path.join(app.config['UPLOAD_FOLDER'], username)
+        os.makedirs(user_dir, exist_ok=True)
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        # Log da atividade
+        admin_user = _get_admin_user()
+        if admin_user:
+            log_activity(admin_user.id, 'create_user', 'user', user.id, username)
+        
+        return jsonify({
+            'message': 'Usuário criado com sucesso',
+            'user': {
+                'id': user.id,
+                'username': username,
+                'email': email,
+                'is_admin': is_admin,
+                'storage_quota': storage_quota
+            }
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Erro ao criar usuário: {str(e)}'}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@jwt_required()
+def update_user(user_id):
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'Usuário não encontrado'}), 404
+    
+    data = request.get_json() or {}
+    
+    try:
+        # Atualizar campos permitidos
+        if 'email' in data and data['email'].strip():
+            new_email = data['email'].strip()
+            # Verificar se email já existe em outro usuário
+            existing = User.query.filter(User.email == new_email, User.id != user_id).first()
+            if existing:
+                return jsonify({'error': 'Email já está sendo usado por outro usuário'}), 400
+            user.email = new_email
+        
+        if 'storage_quota' in data:
+            user.storage_quota = int(data['storage_quota'])
+        
+        if 'password' in data and data['password'].strip():
+            user.set_password(data['password'].strip())
+        
+        db.session.commit()
+        
+        # Log da atividade
+        admin_user = _get_admin_user()
+        if admin_user:
+            log_activity(admin_user.id, 'update_user', 'user', user.id, user.username)
+        
+        return jsonify({'message': 'Usuário atualizado com sucesso'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Erro ao atualizar usuário: {str(e)}'}), 500
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@jwt_required()
+def delete_user(user_id):
+    if not _require_admin():
+        return jsonify({'error': 'Acesso negado'}), 403
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'Usuário não encontrado'}), 404
+    
+    # Não permitir deletar o próprio admin
+    admin_user = _get_admin_user()
+    if admin_user and user.id == admin_user.id:
+        return jsonify({'error': 'Não é possível deletar sua própria conta admin'}), 400
+    
+    try:
+        # Deletar arquivos e relacionamentos do usuário
+        user_files = File.query.filter_by(user_id=user_id).all()
+        for file in user_files:
+            # Remover arquivo do disco
+            if os.path.exists(file.file_path):
+                try:
+                    os.remove(file.file_path)
+                except Exception:
+                    pass
+        
+        # Deletar relacionamentos em cascata (SQLAlchemy deve cuidar)
+        # Mas vamos ser explícitos para evitar erro de FK
+        Share.query.filter_by(owner_id=user_id).delete()
+        Share.query.filter_by(shared_with_id=user_id).delete()
+        Comment.query.filter_by(user_id=user_id).delete()
+        ExecutionLog.query.filter_by(user_id=user_id).delete()
+        Activity.query.filter_by(user_id=user_id).delete()
+        
+        # Deletar pastas e arquivos
+        Folder.query.filter_by(user_id=user_id).delete()
+        File.query.filter_by(user_id=user_id).delete()
+        
+        # Deletar diretório do usuário
+        user_dir = os.path.join(app.config['UPLOAD_FOLDER'], user.username)
+        if os.path.exists(user_dir):
+            try:
+                import shutil
+                shutil.rmtree(user_dir)
+            except Exception:
+                pass
+        
+        # Deletar usuário
+        db.session.delete(user)
+        db.session.commit()
+        
+        # Log da atividade
+        if admin_user:
+            log_activity(admin_user.id, 'delete_user', 'user', user_id, user.username)
+        
+        return jsonify({'message': 'Usuário deletado com sucesso'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Erro ao deletar usuário: {str(e)}'}), 500
 
 # Função auxiliar para calcular hash do arquivo
 def calculate_file_hash(file_path):
@@ -299,6 +779,8 @@ def upload_file():
         
         file = request.files['file']
         folder_id = request.form.get('folder_id', type=int)
+        if folder_id == 0:
+            folder_id = None
         
         if file.filename == '':
             return jsonify({'error': 'Nome de arquivo inválido'}), 400
@@ -386,6 +868,8 @@ def list_files():
     try:
         user_id = int(get_jwt_identity())
         folder_id = request.args.get('folder_id', type=int, default=None)
+        if folder_id == 0:
+            folder_id = None
         
         # Buscar pastas na pasta atual
         folders = Folder.query.filter_by(user_id=user_id, parent_id=folder_id).all()
@@ -465,9 +949,33 @@ def delete_file(file_id):
     if os.path.exists(file.file_path):
         os.remove(file.file_path)
     
+    # Remover dependências relacionadas antes de deletar (evita erro de FK no MySQL)
+    try:
+        Share.query.filter_by(file_id=file.id).delete(synchronize_session=False)
+    except Exception:
+        pass
+    try:
+        Comment.query.filter_by(file_id=file.id).delete(synchronize_session=False)
+    except Exception:
+        pass
+    try:
+        FileVersion.query.filter_by(file_id=file.id).delete(synchronize_session=False)
+    except Exception:
+        pass
+    try:
+        ExecutionLog.query.filter_by(file_id=file.id).delete(synchronize_session=False)
+    except Exception:
+        pass
+
     # Remover do banco de dados
     db.session.delete(file)
     db.session.commit()
+
+    # Log de atividade
+    try:
+        log_activity(user_id, 'delete', 'file', file_id, getattr(file, 'original_name', 'arquivo'))
+    except Exception:
+        pass
     
     return jsonify({'message': 'Arquivo excluído com sucesso'}), 200
 
@@ -909,6 +1417,8 @@ def get_thumbnail(file_id):
 def list_folders():
     user_id = int(get_jwt_identity())
     parent_id = request.args.get('parent_id', type=int)
+    if parent_id == 0:
+        parent_id = None
     
     folders = Folder.query.filter_by(user_id=user_id, parent_id=parent_id).all()
     files = File.query.filter_by(user_id=user_id, folder_id=parent_id).all()
@@ -951,6 +1461,8 @@ def create_folder():
         
         name = data.get('name', '').strip()
         parent_id = data.get('parent_id')
+        if parent_id in (0, '0'):
+            parent_id = None
         
         if not name:
             return jsonify({'error': 'Nome da pasta é obrigatório'}), 400
@@ -1037,6 +1549,7 @@ def create_default_user():
         )
         admin_user.set_password('admin123')
         admin_user.storage_quota = 10737418240  # 10GB para admin
+        admin_user.is_admin = True  # Marcar como administrador
         
         db.session.add(admin_user)
         
@@ -1052,6 +1565,7 @@ def create_default_user():
             email='teste@chiapettacloud.com'
         )
         test_user.set_password('teste123')
+        test_user.is_admin = False  # Usuário normal
         
         db.session.add(test_user)
         
@@ -1069,7 +1583,14 @@ def create_default_user():
 # sem exigir a execução manual de scripts de inicialização.
 with app.app_context():
     db.create_all()
+    # Tenta ajustar tipos em MySQL antes de criar usuários padrão
+    try:
+        run_simple_migrations()
+    except Exception as _e:
+        print(f"Aviso: migração inicial falhou: {_e}")
     create_default_user()
+    # Garantir que o admin existente tenha privilégio
+    backfill_admin_flag()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

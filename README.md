@@ -29,7 +29,8 @@ Um sistema de armazenamento em nuvem completo semelhante ao Nextcloud, desenvolv
 - **Fetch API**: Comunicação com backend
 
 ### Banco de Dados
-- **SQLite**: Banco de dados leve e eficiente
+- **SQLite**: Banco de dados leve e eficiente (desenvolvimento)
+- **MySQL (remoto)**: Suportado via SQLAlchemy + PyMySQL
 
 ## Estrutura do Projeto
 
@@ -145,6 +146,20 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:pass@localhost/cloudd
 # MySQL
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://user:pass@localhost/clouddb'
 ```
+
+Ou defina variáveis de ambiente para uso automático de MySQL remoto (recomendado):
+
+```
+export MYSQL_HOST=seu-host-remoto
+export MYSQL_PORT=3306
+export MYSQL_DB=cloud_storage
+export MYSQL_USER=usuario
+export MYSQL_PASSWORD='sua_senha'
+# Alternativamente, use uma URL completa:
+export DATABASE_URL="mysql+pymysql://usuario:senha@host:3306/cloud_storage?charset=utf8mb4"
+```
+
+Se nenhuma variável estiver definida, o app usa SQLite local `cloud_storage.db`.
 
 ### 3. Configurar HTTPS
 Use um servidor web como Nginx ou Apache com certificado SSL.

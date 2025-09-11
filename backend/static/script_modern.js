@@ -222,6 +222,7 @@ function showSection(sectionName) {
         'trash': 'Lixeira',
         'activities': 'Atividades',
         'system': 'Sistema',
+        'users': 'Gerenciar Usuários',
         'profile': 'Configurações'
     };
     
@@ -243,6 +244,12 @@ function showSection(sectionName) {
             break;
         case 'system':
             loadSystemInfo();
+            break;
+        case 'profile':
+            loadDbSettings();
+            break;
+        case 'users':
+            loadUsers();
             break;
     }
 }
@@ -326,6 +333,9 @@ function createFileCard(file) {
             </button>
             <button class="action-btn" onclick="showShareModal(${file.id}, 'file')" title="Compartilhar">
                 <i class="fas fa-share-alt"></i>
+            </button>
+            <button class="action-btn" onclick="deleteFile(${file.id})" title="Excluir">
+                <i class="fas fa-trash"></i>
             </button>
             <button class="action-btn" onclick="showFileOptions(${file.id})" title="Mais opções">
                 <i class="fas fa-ellipsis-v"></i>
@@ -723,6 +733,30 @@ async function downloadFile(fileId) {
     }
 }
 
+// Exclusão de arquivo
+async function deleteFile(fileId) {
+    if (!confirm('Tem certeza que deseja excluir este arquivo? Esta ação não pode ser desfeita.')) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/delete/${fileId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        if (response.ok) {
+            showNotification('Arquivo excluído com sucesso', 'success');
+            loadFiles(currentFolderId);
+        } else {
+            const err = await response.json().catch(() => ({}));
+            showNotification('Erro ao excluir: ' + (err.error || response.statusText), 'error');
+        }
+    } catch (e) {
+        showNotification('Erro de conexão: ' + e.message, 'error');
+    }
+}
+
 // Carregar outras seções
 async function loadUserInfo() {
     try {
@@ -789,15 +823,133 @@ async function loadSystemInfo() {
 
         if (response.ok) {
             const data = await response.json();
-            const container = document.getElementById('system-info-container');
-            container.innerHTML = `
-                <p><strong>CPU:</strong> ${data.cpu_usage.toFixed(1)}%</p>
-                <p><strong>Memória:</strong> ${data.memory.percent.toFixed(1)}%</p>
-                <p><strong>Disco:</strong> ${data.disk.percent.toFixed(1)}% (Livre: ${formatFileSize(data.disk.free)})</p>
-            `;
+            updateSystemCharts(data);
+            // Boot do refresco periódico (a cada 5s)
+            if (!window.__sysInfoInterval) {
+                window.__sysInfoInterval = setInterval(refreshSystemCharts, 5000);
+            }
         }
     } catch (error) {
         console.error('Erro ao carregar informações do sistema:', error);
+    }
+}
+
+// ===== Gráficos de Sistema (Chart.js) =====
+let cpuChart, memChart, diskChart;
+let cpuDataHistory = [];
+
+function ensureCharts() {
+    const cpuCtx = document.getElementById('cpuChart');
+    const memCtx = document.getElementById('memChart');
+    const diskCtx = document.getElementById('diskChart');
+    if (!cpuCtx || !memCtx || !diskCtx) return false;
+    if (!cpuChart) {
+        cpuChart = new Chart(cpuCtx, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''),
+                datasets: [{
+                    label: 'CPU %',
+                    data: Array(20).fill(0),
+                    borderColor: '#0066cc',
+                    backgroundColor: 'rgba(0,102,204,0.1)',
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { min: 0, max: 100, ticks: { callback: (v)=> v + '%'} },
+                    x: { display: false }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+    if (!memChart) {
+        memChart = new Chart(memCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Usado', 'Livre'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: ['#28a745', '#e9ecef'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
+    if (!diskChart) {
+        diskChart = new Chart(diskCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Usado', 'Livre'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: ['#17a2b8', '#e9ecef'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
+    return true;
+}
+
+function updateSystemCharts(data) {
+    if (!ensureCharts()) return;
+    // CPU histórico
+    cpuDataHistory.push(Number(data.cpu_usage.toFixed(1)));
+    if (cpuDataHistory.length > 60) cpuDataHistory.shift();
+    const labels = Array(cpuDataHistory.length).fill('');
+    cpuChart.data.labels = labels;
+    cpuChart.data.datasets[0].data = cpuDataHistory;
+    cpuChart.update('none');
+
+    // Memória
+    const memUsed = data.memory.percent;
+    memChart.data.datasets[0].data = [memUsed, 100 - memUsed];
+    memChart.update('none');
+    const memStats = document.getElementById('mem-stats');
+    if (memStats) {
+        memStats.textContent = `Total: ${formatFileSize(data.memory.total)} | Disponível: ${formatFileSize(data.memory.available)} | Uso: ${memUsed.toFixed(1)}%`;
+    }
+
+    // Disco
+    const diskUsedPercent = data.disk.percent;
+    diskChart.data.datasets[0].data = [diskUsedPercent, 100 - diskUsedPercent];
+    diskChart.update('none');
+    const diskStats = document.getElementById('disk-stats');
+    if (diskStats) {
+        diskStats.textContent = `Total: ${formatFileSize(data.disk.total)} | Livre: ${formatFileSize(data.disk.free)} | Uso: ${diskUsedPercent.toFixed(1)}%`;
+    }
+}
+
+async function refreshSystemCharts() {
+    // Evitar rodar se a aba "system" não estiver ativa
+    const section = document.getElementById('system-section');
+    if (!section || !section.classList.contains('active')) return;
+    try {
+        const response = await fetch('/api/system-info', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            updateSystemCharts(data);
+        }
+    } catch (e) {
+        // silencioso
     }
 }
 
@@ -1403,3 +1555,300 @@ function moveToTrash() {
 window.addEventListener('load', function() {
     console.log('Chiapetta Cloud - Interface Moderna Carregada');
 });
+
+// ===== Configurações de Banco de Dados (MySQL) =====
+async function loadDbSettings() {
+    try {
+        const resp = await fetch('/api/settings/db', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (!resp.ok) {
+            if (resp.status === 403) {
+                showNotification('Somente admin pode ver/editar configurações de BD.', 'warning');
+            } else {
+                showNotification('Falha ao carregar config de BD', 'error');
+            }
+            return;
+        }
+        const data = await resp.json();
+    // Esconder URI SQLite da UI para não confundir (mostrar vazio se começar com sqlite)
+        const uri = data.in_use_uri || '';
+        const inUseEl = document.getElementById('db-in-use');
+        if (uri && !uri.startsWith('sqlite')) {
+            inUseEl.textContent = uri;
+        } else {
+            inUseEl.textContent = 'não configurado (defina um MySQL)';
+        }
+        document.getElementById('db-host').value = data.host || '';
+        document.getElementById('db-port').value = data.port || '3306';
+        document.getElementById('db-name').value = data.db || '';
+        document.getElementById('db-user').value = data.user || '';
+        const hint = document.getElementById('db-pass-hint');
+        if (data.has_password) {
+            hint.textContent = 'Uma senha já está configurada (deixe em branco para manter).';
+        } else {
+            hint.textContent = '';
+        }
+        // Binding do submit
+        const form = document.getElementById('db-settings-form');
+        if (form && !form.__bound) {
+            form.addEventListener('submit', saveDbSettings);
+            form.__bound = true;
+        }
+    } catch (e) {
+        console.error(e);
+        showNotification('Erro ao carregar config de BD: ' + e.message, 'error');
+    }
+}
+
+async function saveDbSettings(e) {
+    e.preventDefault();
+    const host = document.getElementById('db-host').value.trim();
+    const port = document.getElementById('db-port').value.trim() || '3306';
+    const db = document.getElementById('db-name').value.trim();
+    const user = document.getElementById('db-user').value.trim();
+    const pass = document.getElementById('db-pass').value; // pode ser vazio para manter
+    const applyNow = document.getElementById('db-apply-now').checked;
+
+    if (!host || !db || !user) {
+        showNotification('Preencha host, banco e usuário.', 'warning');
+        return;
+    }
+    const payload = { host, port, db, user, apply_now: applyNow };
+    if (pass !== '') payload.password = pass;
+
+    try {
+        const resp = await fetch('/api/settings/db', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showNotification(data.error || 'Falha ao salvar configuração', 'error');
+            return;
+        }
+        if (data.saved) {
+            showNotification('Configuração de BD salva' + (data.applied ? ' e aplicada.' : '.'), 'success');
+            // Atualizar URI em uso
+            await loadDbSettings();
+        } else {
+            showNotification('Nada foi salvo.', 'info');
+        }
+    } catch (e) {
+        showNotification('Erro ao salvar config de BD: ' + e.message, 'error');
+    }
+}
+
+async function testDbConnection() {
+    try {
+        const el = document.getElementById('db-ping-status');
+        if (el) el.textContent = 'Testando...';
+        const resp = await fetch('/api/settings/db/ping', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (data.status === 'ok') {
+            showNotification('Conexão OK', 'success');
+            if (el) el.textContent = 'Conexão OK';
+        } else if (data.status === 'no-config') {
+            showNotification('Nenhuma configuração salva para testar.', 'warning');
+            if (el) el.textContent = 'Nenhuma configuração salva.';
+        } else {
+            showNotification('Falha na conexão: ' + (data.error || 'erro desconhecido'), 'error');
+            if (el) el.textContent = 'Erro: ' + (data.error || 'desconhecido');
+        }
+    } catch (e) {
+        showNotification('Erro ao testar conexão: ' + e.message, 'error');
+    }
+}
+
+// ===== Gerenciamento de Usuários (Admin) =====
+async function loadUsers() {
+    try {
+        const resp = await fetch('/api/admin/users', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (!resp.ok) {
+            if (resp.status === 403) {
+                showNotification('Somente admin pode gerenciar usuários.', 'warning');
+                return;
+            }
+            throw new Error('Falha ao carregar usuários');
+        }
+        const data = await resp.json();
+        displayUsers(data.users || []);
+    } catch (e) {
+        showNotification('Erro ao carregar usuários: ' + e.message, 'error');
+    }
+}
+
+function displayUsers(users) {
+    const tbody = document.getElementById('users-table-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    users.forEach(user => {
+        const row = document.createElement('tr');
+        const storageUsed = formatFileSize(user.storage_used);
+        const storageTotal = formatFileSize(user.storage_quota);
+        const storagePercent = user.storage_percent.toFixed(1);
+        
+        row.innerHTML = `
+            <td>
+                <div class="user-info">
+                    <strong>${user.username}</strong>
+                    ${user.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
+                </div>
+            </td>
+            <td>${user.email}</td>
+            <td>
+                ${user.is_admin ? 
+                    '<span class="badge badge-admin">Administrador</span>' : 
+                    '<span class="badge badge-user">Usuário</span>'
+                }
+            </td>
+            <td>
+                <div class="storage-info">
+                    <div class="storage-bar">
+                        <div class="storage-used" style="width: ${Math.min(storagePercent, 100)}%"></div>
+                    </div>
+                    <small>${storageUsed} / ${storageTotal} (${storagePercent}%)</small>
+                </div>
+            </td>
+            <td>${formatDate(user.created_at)}</td>
+            <td class="user-actions">
+                <button class="btn btn-sm btn-secondary" onclick="editUser(${user.id})" title="Editar">
+                    <i class="fas fa-edit"></i>
+                </button>
+                ${user.username !== 'admin' ? 
+                    `<button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')" title="Deletar">
+                        <i class="fas fa-trash"></i>
+                    </button>` : 
+                    ''
+                }
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function showCreateUserModal() {
+    document.getElementById('user-modal-title').textContent = 'Criar Usuário';
+    document.getElementById('user-save-text').textContent = 'Criar Usuário';
+    document.getElementById('user-form').reset();
+    document.getElementById('user-id').value = '';
+    document.getElementById('user-password-hint').textContent = 'Mínimo 6 caracteres';
+    showModal('user-modal');
+}
+
+async function editUser(userId) {
+    try {
+        const resp = await fetch('/api/admin/users', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await resp.json();
+        const user = data.users.find(u => u.id === userId);
+        
+        if (!user) {
+            showNotification('Usuário não encontrado', 'error');
+            return;
+        }
+        
+        document.getElementById('user-modal-title').textContent = 'Editar Usuário';
+        document.getElementById('user-save-text').textContent = 'Salvar Alterações';
+        document.getElementById('user-id').value = user.id;
+        document.getElementById('user-username').value = user.username;
+        document.getElementById('user-username').disabled = true; // Não permitir alterar username
+        document.getElementById('user-email').value = user.email;
+        document.getElementById('user-password').value = '';
+        document.getElementById('user-password-hint').textContent = 'Deixe em branco para manter a senha atual';
+        document.getElementById('user-storage-quota').value = user.storage_quota;
+        document.getElementById('user-is-admin').checked = user.is_admin;
+        
+        showModal('user-modal');
+    } catch (e) {
+        showNotification('Erro ao carregar dados do usuário: ' + e.message, 'error');
+    }
+}
+
+async function saveUser() {
+    const userId = document.getElementById('user-id').value;
+    const username = document.getElementById('user-username').value.trim();
+    const email = document.getElementById('user-email').value.trim();
+    const password = document.getElementById('user-password').value;
+    const storageQuota = document.getElementById('user-storage-quota').value;
+    const isAdmin = document.getElementById('user-is-admin').checked;
+    
+    if (!username || !email) {
+        showNotification('Nome de usuário e email são obrigatórios', 'warning');
+        return;
+    }
+    
+    if (!userId && (!password || password.length < 6)) {
+        showNotification('Senha deve ter pelo menos 6 caracteres', 'warning');
+        return;
+    }
+    
+    const payload = {
+        username,
+        email,
+        storage_quota: parseInt(storageQuota),
+        is_admin: isAdmin
+    };
+    
+    if (password) {
+        payload.password = password;
+    }
+    
+    try {
+        const method = userId ? 'PUT' : 'POST';
+        const url = userId ? `/api/admin/users/${userId}` : '/api/admin/users';
+        
+        const resp = await fetch(url, {
+            method,
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await resp.json();
+        if (!resp.ok) {
+            throw new Error(data.error || 'Falha ao salvar usuário');
+        }
+        
+        showNotification(data.message || 'Usuário salvo com sucesso', 'success');
+        closeModal('user-modal');
+        loadUsers(); // Recarregar lista
+    } catch (e) {
+        showNotification('Erro ao salvar usuário: ' + e.message, 'error');
+    }
+}
+
+async function deleteUser(userId, username) {
+    if (!confirm(`Tem certeza que deseja deletar o usuário "${username}"?\n\nTodos os arquivos e dados do usuário serão perdidos permanentemente.`)) {
+        return;
+    }
+    
+    try {
+        const resp = await fetch(`/api/admin/users/${userId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await resp.json();
+        if (!resp.ok) {
+            throw new Error(data.error || 'Falha ao deletar usuário');
+        }
+        
+        showNotification(data.message || 'Usuário deletado com sucesso', 'success');
+        loadUsers(); // Recarregar lista
+    } catch (e) {
+        showNotification('Erro ao deletar usuário: ' + e.message, 'error');
+    }
+}
