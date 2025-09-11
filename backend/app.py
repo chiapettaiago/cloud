@@ -546,7 +546,7 @@ def system_info():
         
         cpu_percent = psutil.cpu_percent(interval=0.1)  # Reduzir intervalo
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage(app.config['UPLOAD_FOLDER'])
         
         return jsonify({
             'cpu_usage': cpu_percent,
@@ -559,7 +559,7 @@ def system_info():
                 'total': disk.total,
                 'used': disk.used,
                 'free': disk.free,
-                'percent': (disk.used / disk.total) * 100
+                'percent': disk.percent
             }
         }), 200
     except Exception as e:
@@ -1063,8 +1063,13 @@ def create_default_user():
     
     db.session.commit()
 
+# Inicializa o banco de dados e cria usuários padrão sempre que o módulo
+# for importado. Isso garante que as rotas e recursos funcionem
+# corretamente em diferentes ambientes (por exemplo, durante os testes),
+# sem exigir a execução manual de scripts de inicialização.
+with app.app_context():
+    db.create_all()
+    create_default_user()
+
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        create_default_user()
     app.run(debug=True, host='0.0.0.0', port=5000)

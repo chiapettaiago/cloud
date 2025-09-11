@@ -786,10 +786,15 @@ async function loadSystemInfo() {
                 'Authorization': `Bearer ${authToken}`
             }
         });
-        
+
         if (response.ok) {
             const data = await response.json();
-            // Implementar exibição de informações do sistema
+            const container = document.getElementById('system-info-container');
+            container.innerHTML = `
+                <p><strong>CPU:</strong> ${data.cpu_usage.toFixed(1)}%</p>
+                <p><strong>Memória:</strong> ${data.memory.percent.toFixed(1)}%</p>
+                <p><strong>Disco:</strong> ${data.disk.percent.toFixed(1)}% (Livre: ${formatFileSize(data.disk.free)})</p>
+            `;
         }
     } catch (error) {
         console.error('Erro ao carregar informações do sistema:', error);
