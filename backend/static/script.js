@@ -456,9 +456,10 @@ async function loadSystemInfo() {
             
             document.getElementById('memory-progress').style.width = `${data.memory.percent}%`;
             document.getElementById('memory-text').textContent = `${data.memory.percent.toFixed(1)}%`;
-            
+
             document.getElementById('disk-progress').style.width = `${data.disk.percent}%`;
             document.getElementById('disk-text').textContent = `${data.disk.percent.toFixed(1)}%`;
+            document.getElementById('disk-free').textContent = `Livre: ${formatFileSize(data.disk.free)}`;
         }
     } catch (error) {
         console.error('Erro ao carregar informações do sistema:', error);
