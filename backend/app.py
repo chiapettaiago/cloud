@@ -213,10 +213,14 @@ class ExecutionLog(db.Model):
     executed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-def run_simple_migrations():
-    """Aplica migrações simples compatíveis com MySQL, como ajuste de tipos."""
+def run_simple_migrations(engine=None):
+    """Aplica migrações simples compatíveis com MySQL, como ajuste de tipos.
+    Pode receber um engine específico; caso contrário usa o bind da sessão ou engine padrão.
+    """
     try:
-        eng = db.engine
+        eng = engine or getattr(db.session, 'bind', None) or db.engine
+        if not eng:
+            return
         if not getattr(eng.url, 'drivername', '').startswith('mysql'):
             return
         from sqlalchemy import text
@@ -240,6 +244,36 @@ def run_simple_migrations():
                 print(f"Aviso: ALTER file_version.file_size: {e}")
     except Exception as e:
         print(f"Aviso: falha ao executar migrações simples: {e}")
+
+def rebind_db_engine(new_uri):
+    """Cria um novo engine e reatribui o bind da sessão para a nova conexão.
+    Atualiza a config da app; não depende do cache de db.engine.
+    """
+    try:
+        from sqlalchemy import create_engine
+        # Atualiza config
+        app.config['SQLALCHEMY_DATABASE_URI'] = new_uri
+        # Remove sessão atual e cria novo engine
+        try:
+            db.session.remove()
+        except Exception:
+            pass
+        try:
+            # Dispor engine antigo, se existir
+            db.engine.dispose()
+        except Exception:
+            pass
+        eng = create_engine(new_uri, pool_pre_ping=True)
+        # Reatribuir binds
+        db.session.bind = eng
+        try:
+            # Para compat com certas operações
+            db.metadata.bind = eng
+        except Exception:
+            pass
+        return eng
+    except Exception as e:
+        raise e
 
 
 # ===== Endpoints de Configuração e Administração (GUI) =====
@@ -347,19 +381,13 @@ def setup_save_db():
 
     # Aplicar em tempo real: reconfigurar conexão, criar tabelas, migrações e usuários padrão
     try:
-        db.session.remove()
-    except Exception:
-        pass
-    try:
-        db.engine.dispose()
-    except Exception:
-        pass
-    app.config['SQLALCHEMY_DATABASE_URI'] = new_uri
-    try:
         with app.app_context():
-            _ = db.engine.connect(); _.close()
+            eng = rebind_db_engine(new_uri)
+            # Conectar para validar
+            _ = eng.connect(); _.close()
+            # Criar tabelas usando a nova conexão configurada
             db.create_all()
-            run_simple_migrations()
+            run_simple_migrations(engine=eng)
             # Se o banco estiver vazio e dados do primeiro usuário foram fornecidos, criar este usuário
             created_first = False
             try:
@@ -547,35 +575,26 @@ def set_db_settings():
     if apply_now and not force:
         old_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
         try:
-            db.session.remove()
-            try:
-                db.engine.dispose()
-            except Exception:
-                pass
-            app.config['SQLALCHEMY_DATABASE_URI'] = new_uri
-            # Forçar reconexão e criar tabelas
             with app.app_context():
-                # Toca no engine
-                _ = db.engine.connect()
-                _.close()
+                eng = rebind_db_engine(new_uri)
+                # Valida conexão
+                _ = eng.connect(); _.close()
+                # Criar tabelas usando a nova conexão configurada
                 db.create_all()
-                # Migrações simples e usuários padrão no novo banco
                 try:
-                    run_simple_migrations()
+                    run_simple_migrations(engine=eng)
                     create_default_user()
                     backfill_admin_flag()
                 except Exception as _e:
-                    print(f"Aviso: falha ao criar usuários padrão no novo BD: {_e}")
+                    print(f"Aviso: falha pós-aplicar no novo BD: {_e}")
             applied = True
         except Exception as e:
             # Reverter para a URI anterior, se houver
             if old_uri:
-                app.config['SQLALCHEMY_DATABASE_URI'] = old_uri
-            try:
-                db.session.remove()
-                db.engine.dispose()
-            except Exception:
-                pass
+                try:
+                    rebind_db_engine(old_uri)
+                except Exception:
+                    pass
             return jsonify({'error': f'Falha ao aplicar configuração em tempo real: {str(e)}', 'saved': True, 'applied': False}), 200
 
     return jsonify({'message': 'Configuração salva', 'saved': True, 'applied': applied}), 200
