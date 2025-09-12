@@ -80,12 +80,30 @@ function setupEventListeners() {
         }
     });
     
-    // Context menu
+    // Context menu (desktop)
     document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('click', hideContextMenu);
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') hideContextMenu();
+        if (e.key === 'Escape') {
+            hideContextMenu();
+            closeSidebar();
+        }
     });
+
+    // Context menu (mobile) - long press
+    bindLongPressContextMenu();
+
+    // Sidebar toggle (mobile)
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+    if (sidebarToggle && !sidebarToggle.__bound) {
+        sidebarToggle.addEventListener('click', toggleSidebar);
+        sidebarToggle.__bound = true;
+    }
+    if (sidebarBackdrop && !sidebarBackdrop.__bound) {
+        sidebarBackdrop.addEventListener('click', closeSidebar);
+        sidebarBackdrop.__bound = true;
+    }
     
     // Fechar dropdown do usuário ao clicar fora
     document.addEventListener('click', function(e) {
@@ -1177,17 +1195,18 @@ async function createShare() {
 function handleContextMenu(e) {
     const card = e.target.closest('.file-card, .folder-card');
     const menu = document.getElementById('context-menu');
-    if (!menu) return; // sem menu definido
-
+    if (!menu) return;
     if (!card) {
-        // Clique direito fora dos cards: esconder e deixar menu padrão
         hideContextMenu();
-        return; // permitir menu do navegador fora dos cards
+        return;
     }
-
     e.preventDefault();
+    openContextMenuForCard(card, e.clientX, e.clientY);
+}
 
-    // Definir contexto
+function openContextMenuForCard(card, clientX, clientY) {
+    const menu = document.getElementById('context-menu');
+    if (!menu || !card) return;
     const isFile = card.classList.contains('file-card');
     const ctx = {
         type: isFile ? 'file' : 'folder',
@@ -1195,41 +1214,76 @@ function handleContextMenu(e) {
         name: isFile ? card.dataset.fileName : card.dataset.folderName,
         data: null
     };
-    try {
-        if (isFile && card.dataset.fileData) ctx.data = JSON.parse(card.dataset.fileData);
-    } catch (_) {}
+    try { if (isFile && card.dataset.fileData) ctx.data = JSON.parse(card.dataset.fileData); } catch (_) {}
     window.__contextItem = ctx;
-
-    // Selecionar visualmente
     document.querySelectorAll('.file-card.selected, .folder-card.selected').forEach(el => el.classList.remove('selected'));
     card.classList.add('selected');
-
-    // Ajustar visibilidade dos itens do menu conforme tipo
     const show = (sel, visible) => {
         const el = menu.querySelector(sel);
         if (el) el.style.display = visible ? 'flex' : 'none';
     };
     const isText = ctx.type === 'file' && ctx.name && isTextFile(ctx.name);
-    // Para pastas: ocultar download/editar/renomear/excluir se não houver backend correspondente
     const isFolder = ctx.type === 'folder';
-    show('[data-action="preview"]', true); // Visualizar: arquivo = preview; pasta = abrir
+    show('[data-action="preview"]', true);
     show('[data-action="download"]', !isFolder);
     show('[data-action="share"]', true);
     show('[data-action="edit"]', !isFolder && isText);
-    show('[data-action="rename"]', !isFolder); // renome de pasta não implementado
-    show('[data-action="delete"]', !isFolder); // excluir pasta não implementado
-
-    // Posicionar menu (evitar overflow)
+    show('[data-action="rename"]', !isFolder);
+    show('[data-action="delete"]', !isFolder);
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
-    const rect = { w: 200, h: 240 }; // aproximado do menu
-    let x = e.clientX;
-    let y = e.clientY;
+    const rect = { w: 220, h: 260 };
+    let x = clientX;
+    let y = clientY;
     if (x + rect.w > viewportW) x = viewportW - rect.w - 10;
     if (y + rect.h > viewportH) y = viewportH - rect.h - 10;
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
     menu.classList.remove('d-none');
+}
+
+function bindLongPressContextMenu() {
+    const state = { timer: null, card: null, x: 0, y: 0, triggered: false };
+    const cancel = () => {
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = null;
+        state.card = null;
+        state.triggered = false;
+    };
+    document.addEventListener('touchstart', (e) => {
+        const touch = e.touches && e.touches[0];
+        if (!touch) return;
+        const card = e.target.closest && e.target.closest('.file-card, .folder-card');
+        if (!card) { cancel(); return; }
+        state.card = card;
+        state.x = touch.clientX;
+        state.y = touch.clientY;
+        state.triggered = false;
+        state.timer = setTimeout(() => {
+            openContextMenuForCard(state.card, state.x, state.y);
+            state.triggered = true;
+        }, 500);
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+        if (!state.card) return;
+        const touch = e.touches && e.touches[0];
+        if (!touch) return;
+        const dx = Math.abs(touch.clientX - state.x);
+        const dy = Math.abs(touch.clientY - state.y);
+        if (dx > 10 || dy > 10) cancel();
+    }, { passive: true });
+    document.addEventListener('touchend', () => {
+        if (!state.triggered) cancel();
+    }, { passive: true });
+    document.addEventListener('touchcancel', () => cancel(), { passive: true });
+}
+
+function toggleSidebar() {
+    document.body.classList.toggle('sidebar-open');
+}
+
+function closeSidebar() {
+    document.body.classList.remove('sidebar-open');
 }
 
 function hideContextMenu() {

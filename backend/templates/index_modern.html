@@ -195,7 +195,12 @@
                 <!-- Header -->
                 <div class="header">
                     <div class="header-content">
-                        <h1 class="header-title" id="section-title">Meus Arquivos</h1>
+                        <div class="header-left">
+                            <button class="btn btn-secondary mobile-only" id="sidebar-toggle" title="Menu">
+                                <i class="fas fa-bars"></i>
+                            </button>
+                            <h1 class="header-title" id="section-title">Meus Arquivos</h1>
+                        </div>
                         <div class="header-actions">
                             <div class="user-menu-container">
                                 <div class="user-menu" onclick="toggleUserMenu()">
@@ -237,6 +242,8 @@
                         </div>
 
                         <!-- Toolbar -->
+                                <!-- Backdrop para sidebar em mobile -->
+                                <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
                         <div class="toolbar">
                             <div class="toolbar-left">
                                 <button class="btn btn-primary" onclick="showCreateFolderModal()">
