@@ -104,6 +104,30 @@ function setupEventListeners() {
         sidebarBackdrop.addEventListener('click', closeSidebar);
         sidebarBackdrop.__bound = true;
     }
+
+    // Bottom nav (mobile)
+    const btnBottomFolder = document.getElementById('btn-bottom-folder');
+    const btnBottomUpload = document.getElementById('btn-bottom-upload');
+    const btnBottomSearch = document.getElementById('btn-bottom-search');
+    if (btnBottomFolder && !btnBottomFolder.__bound) {
+        btnBottomFolder.addEventListener('click', () => {
+            showCreateFolderModal();
+        });
+        btnBottomFolder.__bound = true;
+    }
+    if (btnBottomUpload && !btnBottomUpload.__bound) {
+        btnBottomUpload.addEventListener('click', () => {
+            showUploadModal();
+        });
+        btnBottomUpload.__bound = true;
+    }
+    if (btnBottomSearch && !btnBottomSearch.__bound) {
+        btnBottomSearch.addEventListener('click', () => {
+            const input = document.getElementById('search-input');
+            if (input) input.focus();
+        });
+        btnBottomSearch.__bound = true;
+    }
     
     // Fechar dropdown do usuário ao clicar fora
     document.addEventListener('click', function(e) {
@@ -1364,14 +1388,17 @@ let currentPreviewFile = null;
 
 async function previewFile(fileId) {
     try {
-        // Buscar informações do arquivo
-        const fileCard = document.querySelector(`[data-file-id="${fileId}"]`);
-        if (!fileCard) {
+        // Buscar informações do arquivo (fallback para contexto em mobile)
+        let fileCard = document.querySelector(`[data-file-id="${fileId}"]`);
+        let fileData = null;
+        if (fileCard && fileCard.dataset.fileData) {
+            fileData = JSON.parse(fileCard.dataset.fileData);
+        } else if (window.__contextItem && window.__contextItem.type === 'file' && Number(window.__contextItem.id) === Number(fileId) && window.__contextItem.data) {
+            fileData = window.__contextItem.data;
+        } else {
             showNotification('Arquivo não encontrado', 'error');
             return;
         }
-        
-        const fileData = JSON.parse(fileCard.dataset.fileData);
         currentPreviewFile = fileData;
         
         // Determinar tipo de preview
@@ -1411,12 +1438,7 @@ async function previewImage(fileData) {
     showModal('file-preview-modal');
 
     try {
-        const response = await fetch(`/api/stream/${fileData.id}`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
-        if (!response.ok) throw new Error('Falha ao carregar');
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
+        const url = `/api/stream/${fileData.id}?jwt=${encodeURIComponent(authToken)}`;
         // Reset zoom
         imageZoom = 1;
         body.innerHTML = `
@@ -1758,6 +1780,15 @@ function previewSelectedFile() {
     if (!ctx) return;
     hideContextMenu();
     if (ctx.type === 'file') {
+        if (ctx.data) {
+            const fd = ctx.data;
+            if (isImageFile(fd.filename)) return previewImage(fd);
+            if (isPdfFile(fd.filename)) return previewPdf(fd);
+            if (isVideoFile(fd.filename)) return previewVideo(fd);
+            if (isAudioFile(fd.filename)) return previewAudio(fd);
+            if (isTextFile(fd.filename)) return previewTextFile(fd);
+            return showUnsupportedPreview(fd);
+        }
         previewFile(ctx.id);
     } else if (ctx.type === 'folder') {
         navigateToFolder(ctx.id);
