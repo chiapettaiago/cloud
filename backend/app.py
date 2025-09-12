@@ -13,6 +13,7 @@ from flask_jwt_extended import JWTManager, jwt_required, create_access_token, ge
 from flask_jwt_extended import decode_token
 from flask_cors import CORS
 import bcrypt
+from sqlalchemy import text
 try:
     import magic
 except ImportError:
@@ -54,7 +55,7 @@ def load_db_url_from_file():
     return None
 
 # Configuração de Banco de Dados (prioridade):
-# 1) DATABASE_URL (env)  2) db_config.json (GUI)  3) MYSQL_* envs  4) SQLite local
+# 1) DATABASE_URL (env)  2) db_config.json (GUI)  3) MYSQL_* envs
 db_url = os.environ.get('DATABASE_URL') or load_db_url_from_file()
 if not db_url:
     mysql_host = os.environ.get('MYSQL_HOST')
@@ -66,7 +67,10 @@ if not db_url:
         db_url = _build_mysql_uri(mysql_host, mysql_port, mysql_db, mysql_user, mysql_password)
 
 if not db_url:
-    db_url = 'sqlite:///cloud_storage.db'
+    raise RuntimeError(
+        'Banco de dados não configurado. Configure MySQL via variáveis de ambiente (MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD) '\
+        'ou salve a configuração em backend/instance/db_config.json.'
+    )
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -363,7 +367,7 @@ def set_db_settings():
             from sqlalchemy import create_engine
             test_engine = create_engine(new_uri, pool_pre_ping=True)
             with test_engine.connect() as conn:
-                conn.execute("SELECT 1")
+                conn.execute(text("SELECT 1"))
         except Exception as e:
             return jsonify({'error': f'Falha ao conectar: {str(e)}'}), 400
 
@@ -400,8 +404,9 @@ def set_db_settings():
                     print(f"Aviso: falha ao criar usuários padrão no novo BD: {_e}")
             applied = True
         except Exception as e:
-            # Reverter
-            app.config['SQLALCHEMY_DATABASE_URI'] = old_uri or 'sqlite:///cloud_storage.db'
+            # Reverter para a URI anterior, se houver
+            if old_uri:
+                app.config['SQLALCHEMY_DATABASE_URI'] = old_uri
             try:
                 db.session.remove()
                 db.engine.dispose()
@@ -435,7 +440,7 @@ def ping_db_settings():
         from sqlalchemy import create_engine
         eng = create_engine(uri, pool_pre_ping=True)
         with eng.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return jsonify({'status': 'ok'}), 200
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 200

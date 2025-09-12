@@ -1571,14 +1571,10 @@ async function loadDbSettings() {
             return;
         }
         const data = await resp.json();
-    // Esconder URI SQLite da UI para não confundir (mostrar vazio se começar com sqlite)
-        const uri = data.in_use_uri || '';
-        const inUseEl = document.getElementById('db-in-use');
-        if (uri && !uri.startsWith('sqlite')) {
-            inUseEl.textContent = uri;
-        } else {
-            inUseEl.textContent = 'não configurado (defina um MySQL)';
-        }
+    // Mostrar URI em uso (espera-se MySQL; se vazio, indicar não configurado)
+    const uri = data.in_use_uri || '';
+    const inUseEl = document.getElementById('db-in-use');
+    inUseEl.textContent = uri || 'não configurado (defina um MySQL)';
         document.getElementById('db-host').value = data.host || '';
         document.getElementById('db-port').value = data.port || '3306';
         document.getElementById('db-name').value = data.db || '';

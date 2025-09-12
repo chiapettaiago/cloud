@@ -29,8 +29,7 @@ Um sistema de armazenamento em nuvem completo semelhante ao Nextcloud, desenvolv
 - **Fetch API**: Comunicação com backend
 
 ### Banco de Dados
-- **SQLite**: Banco de dados leve e eficiente (desenvolvimento)
-- **MySQL (remoto)**: Suportado via SQLAlchemy + PyMySQL
+- **MySQL (obrigatório)**: via SQLAlchemy + PyMySQL
 
 ## Estrutura do Projeto
 
@@ -63,7 +62,7 @@ As seguintes configurações podem ser alteradas no arquivo `backend/app.py`:
 
 - `SECRET_KEY`: Chave secreta da aplicação (ALTERE PARA PRODUÇÃO)
 - `JWT_SECRET_KEY`: Chave secreta JWT (ALTERE PARA PRODUÇÃO)
-- `SQLALCHEMY_DATABASE_URI`: URL do banco de dados
+- `SQLALCHEMY_DATABASE_URI`: URL do banco de dados (MySQL)
 - `UPLOAD_FOLDER`: Diretório de armazenamento
 
 ### 3. Executar a Aplicação
@@ -140,11 +139,8 @@ app.config['JWT_SECRET_KEY'] = 'sua-chave-jwt-super-segura'
 
 ### 2. Usar Banco de Dados Robusto
 ```python
-# PostgreSQL
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:pass@localhost/clouddb'
-
 # MySQL
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://user:pass@localhost/clouddb'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://user:pass@localhost:3306/clouddb?charset=utf8mb4'
 ```
 
 Ou defina variáveis de ambiente para uso automático de MySQL remoto (recomendado):
@@ -159,7 +155,7 @@ export MYSQL_PASSWORD='sua_senha'
 export DATABASE_URL="mysql+pymysql://usuario:senha@host:3306/cloud_storage?charset=utf8mb4"
 ```
 
-Se nenhuma variável estiver definida, o app usa SQLite local `cloud_storage.db`.
+Se nenhuma variável estiver definida, o app não inicia e solicitará a configuração do MySQL.
 
 ### 3. Configurar HTTPS
 Use um servidor web como Nginx ou Apache com certificado SSL.
@@ -183,8 +179,7 @@ Implemente rotinas de backup para:
 - Recomendado usar em ambiente controlado
 
 ### Performance
-- SQLite adequado para poucos usuários
-- Para muitos usuários, use PostgreSQL/MySQL
+- MySQL recomendado para qualquer cenário multiusuário
 - Considere CDN para arquivos estáticos
 
 ### Escalabilidade
