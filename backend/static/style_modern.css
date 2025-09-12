@@ -76,12 +76,15 @@ body {
     min-height: 100vh;
     color: var(--dark-color);
     line-height: 1.6;
-    overflow: hidden;
+    /* Permite rolagem na página inteira */
+    overflow-y: auto;
 }
 
 .screen {
     display: none;
     min-height: 100vh;
+    /* Permite rolagem por tela (login, setup, etc.), mesmo com body overflow hidden */
+    overflow-y: auto;
 }
 
 .screen.active {
@@ -243,7 +246,8 @@ body {
 /* Dashboard Moderno */
 .dashboard {
     display: flex;
-    height: 100vh;
+    /* Usa altura mínima para permitir que a página cresça e role */
+    min-height: 100vh;
     background: var(--secondary-color);
 }
 
@@ -312,7 +316,8 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    /* Evita prender a rolagem dentro do conteúdo principal */
+    overflow: visible;
 }
 
 .header {
@@ -473,7 +478,8 @@ body {
 .content-area {
     flex: 1;
     padding: 2rem;
-    overflow-y: auto;
+    /* Deixa a rolagem para a página inteira, evitando scroll nested */
+    overflow-y: visible;
     background: var(--secondary-color);
 }
 
@@ -1165,4 +1171,15 @@ body {
     .preview-actions {
         flex-wrap: wrap;
     }
+}
+
+/* Setup screen tweaks */
+#setup-screen .login-header i {
+    color: var(--accent-color);
+}
+
+/* Garante que o formulário de configuração do MySQL não fique cortado em telas menores */
+#setup-screen .form-container {
+    max-height: 85vh;
+    overflow-y: auto;
 }

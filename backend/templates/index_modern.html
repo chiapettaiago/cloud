@@ -9,6 +9,71 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
+    <!-- Tela de Setup (quando sem DB) -->
+    <div id="setup-screen" class="screen">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-database"></i>
+                <h1>Configurar Banco de Dados</h1>
+                <p>Defina sua conexão MySQL para iniciar o sistema</p>
+            </div>
+            <div class="form-container">
+                <form id="setup-form">
+                    <div class="form-group">
+                        <label>Host</label>
+                        <input type="text" id="setup-host" class="form-control" placeholder="ex: 127.0.0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Porta</label>
+                        <input type="number" id="setup-port" class="form-control" placeholder="3306" value="3306" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Banco</label>
+                        <input type="text" id="setup-db" class="form-control" placeholder="cloud_storage" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Usuário</label>
+                        <input type="text" id="setup-user" class="form-control" placeholder="usuario" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Senha</label>
+                        <input type="password" id="setup-pass" class="form-control" placeholder="••••••">
+                    </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-secondary" id="setup-test-btn"><i class="fas fa-plug"></i> Testar conexão</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Salvar e aplicar</button>
+                    </div>
+                    <div class="mt-2">
+                        <div id="setup-status" class="form-hint"></div>
+                    </div>
+                    <hr class="mt-2"/>
+                    <div class="form-group">
+                        <label>Primeiro usuário (será criado se o banco estiver vazio)</label>
+                        <small class="form-hint">Opcional: preencha para criar já um usuário ao finalizar o setup</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Usuário</label>
+                        <input type="text" id="first-username" class="form-control" placeholder="ex: admin">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="first-email" class="form-control" placeholder="email@exemplo.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Senha</label>
+                        <input type="password" id="first-password" class="form-control" placeholder="••••••">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="first-is-admin" checked>
+                            Tornar administrador
+                        </label>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Tela de Login -->
     <div id="login-screen" class="screen active">
         <div class="login-container">

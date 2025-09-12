@@ -54,6 +54,13 @@ def load_db_url_from_file():
         print(f"Aviso: falha ao ler db_config.json: {e}")
     return None
 
+"""Inicialização de Banco de Dados
+Agora suportamos um 'modo de configuração' (setup) quando não há MySQL definido.
+Nesse modo, a aplicação sobe e expõe endpoints públicos de setup para salvar e
+testar a configuração do MySQL via UI, sem exigir login. As rotas normais ficam
+temporariamente indisponíveis até a configuração ser aplicada.
+"""
+
 # Configuração de Banco de Dados (prioridade):
 # 1) DATABASE_URL (env)  2) db_config.json (GUI)  3) MYSQL_* envs
 db_url = os.environ.get('DATABASE_URL') or load_db_url_from_file()
@@ -66,11 +73,12 @@ if not db_url:
     if mysql_host and mysql_db and mysql_user and mysql_password:
         db_url = _build_mysql_uri(mysql_host, mysql_port, mysql_db, mysql_user, mysql_password)
 
+# Flag global para indicar modo de setup (sem DB configurado)
+NO_DB_CONFIG = False
 if not db_url:
-    raise RuntimeError(
-        'Banco de dados não configurado. Configure MySQL via variáveis de ambiente (MYSQL_HOST, MYSQL_DB, MYSQL_USER, MYSQL_PASSWORD) '\
-        'ou salve a configuração em backend/instance/db_config.json.'
-    )
+    NO_DB_CONFIG = True
+    # Usar uma URI MySQL dummy; não conectaremos enquanto em modo de setup
+    db_url = _build_mysql_uri('127.0.0.1', '3306', '__setup__', 'root', '')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -236,6 +244,158 @@ def run_simple_migrations():
 
 # ===== Endpoints de Configuração e Administração (GUI) =====
 
+# ===== Middleware simples para bloquear rotas durante o modo de setup =====
+from flask import abort
+
+@app.before_request
+def _block_when_setup():
+    global NO_DB_CONFIG
+    # Permitir recursos estáticos e páginas básicas
+    allowed_prefixes = (
+        '/static/', '/api/setup', '/setup', '/', '/favicon.ico'
+    )
+    path = request.path or ''
+    if NO_DB_CONFIG and not any(path.startswith(p) for p in allowed_prefixes):
+        if path.startswith('/api/'):
+            return jsonify({'error': 'Sistema em modo de configuração. Conclua a configuração do MySQL.'}), 503
+        # Para rotas não API, seguir normalmente para a UI decidir o que exibir
+        return None
+
+# ===== Endpoints públicos de Setup (sem autenticação) =====
+
+@app.route('/api/setup/status', methods=['GET'])
+def setup_status():
+    global NO_DB_CONFIG
+    if NO_DB_CONFIG:
+        # Se houver arquivo com config salva, retornar para pré-preenchimento
+        cfg = {}
+        try:
+            if os.path.exists(DB_CONFIG_PATH):
+                with open(DB_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f) or {}
+        except Exception:
+            cfg = {}
+        return jsonify({
+            'mode': 'setup',
+            'configured': False,
+            'preset': {
+                'type': 'mysql',
+                'host': cfg.get('host'),
+                'port': cfg.get('port', '3306'),
+                'db': cfg.get('db'),
+                'user': cfg.get('user'),
+                'has_password': bool(cfg.get('password'))
+            }
+        }), 200
+    return jsonify({'mode': 'normal', 'configured': True}), 200
+
+@app.route('/api/setup/db/ping', methods=['POST'])
+def setup_ping_db():
+    data = request.get_json() or {}
+    host = (data.get('host') or '').strip()
+    port = (data.get('port') or '3306')
+    dbname = (data.get('db') or '').strip()
+    usern = (data.get('user') or '').strip()
+    password = data.get('password')
+    if not host or not dbname or not usern:
+        return jsonify({'status': 'error', 'error': 'host, db e user são obrigatórios'}), 200
+    test_uri = _build_mysql_uri(host, port, dbname, usern, password)
+    try:
+        from sqlalchemy import create_engine
+        eng = create_engine(test_uri, pool_pre_ping=True)
+        with eng.connect() as conn:
+            conn.execute(text('SELECT 1'))
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 200
+
+@app.route('/api/setup/db', methods=['POST'])
+def setup_save_db():
+    global NO_DB_CONFIG
+    if not NO_DB_CONFIG:
+        return jsonify({'error': 'Configuração já aplicada'}), 400
+    data = request.get_json() or {}
+    host = (data.get('host') or '').strip()
+    port = (data.get('port') or '3306')
+    dbname = (data.get('db') or '').strip()
+    usern = (data.get('user') or '').strip()
+    password = data.get('password')
+    # Dados opcionais para criar o primeiro usuário
+    first_username = (data.get('first_username') or '').strip()
+    first_email = (data.get('first_email') or '').strip()
+    first_password = (data.get('first_password') or '').strip()
+    first_is_admin = True if data.get('first_is_admin') is None else bool(data.get('first_is_admin'))
+    if not host or not dbname or not usern:
+        return jsonify({'error': 'host, db e user são obrigatórios'}), 400
+
+    # Validar conexão
+    new_uri = _build_mysql_uri(host, port, dbname, usern, password)
+    try:
+        from sqlalchemy import create_engine
+        test_engine = create_engine(new_uri, pool_pre_ping=True)
+        with test_engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    except Exception as e:
+        return jsonify({'error': f'Falha ao conectar: {str(e)}'}), 400
+
+    # Salvar arquivo
+    try:
+        with open(DB_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump({'type': 'mysql', 'host': host, 'port': str(port), 'db': dbname, 'user': usern, 'password': password}, f)
+    except Exception as e:
+        return jsonify({'error': f'Não foi possível salvar configuração: {str(e)}'}), 500
+
+    # Aplicar em tempo real: reconfigurar conexão, criar tabelas, migrações e usuários padrão
+    try:
+        db.session.remove()
+    except Exception:
+        pass
+    try:
+        db.engine.dispose()
+    except Exception:
+        pass
+    app.config['SQLALCHEMY_DATABASE_URI'] = new_uri
+    try:
+        with app.app_context():
+            _ = db.engine.connect(); _.close()
+            db.create_all()
+            run_simple_migrations()
+            # Se o banco estiver vazio e dados do primeiro usuário foram fornecidos, criar este usuário
+            created_first = False
+            try:
+                user_count = db.session.query(User).count()
+            except Exception:
+                user_count = 0
+
+            if user_count == 0 and first_username and first_email and first_password:
+                try:
+                    new_user = User(username=first_username, email=first_email, is_admin=bool(first_is_admin))
+                    new_user.set_password(first_password)
+                    db.session.add(new_user)
+                    db.session.commit()
+                    # Criar diretório do usuário
+                    try:
+                        user_dir = os.path.join(app.config['UPLOAD_FOLDER'], first_username)
+                        os.makedirs(user_dir, exist_ok=True)
+                    except Exception:
+                        pass
+                    created_first = True
+                    print(f"✅ Primeiro usuário criado via setup: {first_username} (admin={new_user.is_admin})")
+                except Exception as ue:
+                    db.session.rollback()
+                    print(f"Aviso: falha ao criar primeiro usuário: {ue}")
+
+            # Seed padrão apenas se ainda não existir nenhum usuário
+            if not created_first:
+                create_default_user()
+            backfill_admin_flag()
+        NO_DB_CONFIG = False
+        return jsonify({'message': 'Configuração aplicada com sucesso', 'applied': True}), 200
+    except Exception as e:
+        # Reverter flag e manter arquivo salvo
+        NO_DB_CONFIG = True
+        return jsonify({'error': f'Configuração salva mas falhou ao aplicar: {str(e)}', 'applied': False}), 200
+
 def backfill_admin_flag():
     """Garante que o usuário 'admin' existente esteja com is_admin=True.
     Idempotente e silencioso em caso de falhas menores.
@@ -274,6 +434,8 @@ def _get_admin_user():
 @app.route('/api/settings/db', methods=['GET'])
 @jwt_required()
 def get_db_settings():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
 
@@ -334,6 +496,8 @@ def get_db_settings():
 @app.route('/api/settings/db', methods=['POST'])
 @jwt_required()
 def set_db_settings():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
     data = request.get_json() or {}
@@ -420,6 +584,9 @@ def set_db_settings():
 @app.route('/api/settings/db/ping', methods=['GET'])
 @jwt_required()
 def ping_db_settings():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        # Quando em modo de setup, orientar usar o endpoint público
+        return jsonify({'status': 'no-config'}), 200
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
 
@@ -451,6 +618,8 @@ def ping_db_settings():
 @app.route('/api/admin/users', methods=['GET'])
 @jwt_required()
 def list_users():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
     
@@ -478,6 +647,8 @@ def list_users():
 @app.route('/api/admin/users', methods=['POST'])
 @jwt_required()
 def create_user():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
     
@@ -536,6 +707,8 @@ def create_user():
 @app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
 @jwt_required()
 def update_user(user_id):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
     
@@ -578,6 +751,8 @@ def update_user(user_id):
 @app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
 @jwt_required()
 def delete_user(user_id):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     if not _require_admin():
         return jsonify({'error': 'Acesso negado'}), 403
     
@@ -725,6 +900,8 @@ def test_api():
 
 @app.route('/api/register', methods=['POST'])
 def register():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração. Configure o MySQL primeiro.'}), 503
     data = request.get_json()
     username = data.get('username')
     email = data.get('email')
@@ -753,6 +930,8 @@ def register():
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração. Configure o MySQL primeiro.'}), 503
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -772,6 +951,8 @@ def login():
 @app.route('/api/upload', methods=['POST'])
 @jwt_required()
 def upload_file():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())
         user = User.query.get(user_id)
@@ -870,6 +1051,8 @@ def upload_file():
 @app.route('/api/files', methods=['GET'])
 @jwt_required()
 def list_files():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())
         folder_id = request.args.get('folder_id', type=int, default=None)
@@ -930,6 +1113,8 @@ def list_files():
 @app.route('/api/download/<int:file_id>', methods=['GET'])
 @jwt_required()
 def download_file(file_id):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     user_id = int(get_jwt_identity())
     file = File.query.filter_by(id=file_id, user_id=user_id).first()
     
@@ -944,6 +1129,8 @@ def download_file(file_id):
 @app.route('/api/delete/<int:file_id>', methods=['DELETE'])
 @jwt_required()
 def delete_file(file_id):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     user_id = int(get_jwt_identity())
     file = File.query.filter_by(id=file_id, user_id=user_id).first()
     
@@ -987,6 +1174,8 @@ def delete_file(file_id):
 @app.route('/api/execute/<int:file_id>', methods=['POST'])
 @jwt_required()
 def execute_file(file_id):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     user_id = int(get_jwt_identity())
     file = File.query.filter_by(id=file_id, user_id=user_id).first()
     
@@ -1054,6 +1243,8 @@ def execute_file(file_id):
 @app.route('/api/system-info', methods=['GET'])
 @jwt_required()
 def system_info():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())  # Verificar se JWT é válido
         
@@ -1081,6 +1272,8 @@ def system_info():
 @app.route('/api/user-info', methods=['GET'])
 @jwt_required()
 def user_info():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())
         user = User.query.get(user_id)
@@ -1105,6 +1298,8 @@ def user_info():
 @app.route('/api/share', methods=['POST'])
 @jwt_required()
 def create_share():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     user_id = int(get_jwt_identity())
     data = request.get_json()
     
@@ -1182,6 +1377,8 @@ def create_share():
 @app.route('/api/shares', methods=['GET'])
 @jwt_required()
 def list_shares():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())
         shares = Share.query.filter_by(owner_id=user_id).all()
@@ -1216,6 +1413,8 @@ def list_shares():
 
 @app.route('/share/<token>', methods=['GET'])
 def view_share(token):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     share = Share.query.filter_by(token=token).first()
     
     if not share:
@@ -1263,6 +1462,8 @@ def view_share(token):
 
 @app.route('/api/share/<token>/verify-password', methods=['POST'])
 def verify_share_password(token):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     share = Share.query.filter_by(token=token).first()
     
     if not share or not share.password:
@@ -1288,6 +1489,8 @@ def stream_file(file_id):
     Caso contrário, exige Authorization: Bearer <JWT>.
     Suporta Range requests para mídia.
     """
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     share_token = request.args.get('token')
     jwt_param = request.args.get('jwt')
 
@@ -1389,6 +1592,8 @@ def stream_file(file_id):
 
 @app.route('/api/thumbnail/<int:file_id>')
 def get_thumbnail(file_id):
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     file = File.query.get(file_id)
     
     if not file:
@@ -1420,6 +1625,8 @@ def get_thumbnail(file_id):
 @app.route('/api/folders', methods=['GET'])
 @jwt_required()
 def list_folders():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     user_id = int(get_jwt_identity())
     parent_id = request.args.get('parent_id', type=int)
     if parent_id == 0:
@@ -1460,6 +1667,8 @@ def list_folders():
 @app.route('/api/folders', methods=['POST'])
 @jwt_required()
 def create_folder():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -1523,6 +1732,8 @@ def create_folder():
 @app.route('/api/activities', methods=['GET'])
 @jwt_required()
 def get_activities():
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
     try:
         user_id = int(get_jwt_identity())
         limit = request.args.get('limit', 50, type=int)
@@ -1546,7 +1757,17 @@ def get_activities():
 
 # Função para criar usuário padrão
 def create_default_user():
-    """Cria usuário padrão para testes se não existir"""
+    """Cria usuários padrão (admin/teste) somente se não houver nenhum usuário.
+    Evita poluir quando criamos um primeiro usuário via setup.
+    """
+    try:
+        if db.session.query(User).count() > 0:
+            return
+    except Exception:
+        # Se a contagem falhar, tentar continuar com checks individuais
+        pass
+
+    created_any = False
     if not User.query.filter_by(username='admin').first():
         admin_user = User(
             username='admin',
@@ -1554,48 +1775,50 @@ def create_default_user():
         )
         admin_user.set_password('admin123')
         admin_user.storage_quota = 10737418240  # 10GB para admin
-        admin_user.is_admin = True  # Marcar como administrador
-        
+        admin_user.is_admin = True
         db.session.add(admin_user)
-        
-        # Criar diretório do usuário admin
-        admin_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'admin')
-        os.makedirs(admin_dir, exist_ok=True)
-        
+        created_any = True
+        try:
+            admin_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'admin')
+            os.makedirs(admin_dir, exist_ok=True)
+        except Exception:
+            pass
         print("✅ Usuário admin criado - login: admin, senha: admin123")
-    
+
     if not User.query.filter_by(username='teste').first():
         test_user = User(
             username='teste',
             email='teste@chiapettacloud.com'
         )
         test_user.set_password('teste123')
-        test_user.is_admin = False  # Usuário normal
-        
+        test_user.is_admin = False
         db.session.add(test_user)
-        
-        # Criar diretório do usuário teste
-        test_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'teste')
-        os.makedirs(test_dir, exist_ok=True)
-        
+        created_any = True
+        try:
+            test_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'teste')
+            os.makedirs(test_dir, exist_ok=True)
+        except Exception:
+            pass
         print("✅ Usuário teste criado - login: teste, senha: teste123")
-    
-    db.session.commit()
+
+    if created_any:
+        db.session.commit()
 
 # Inicializa o banco de dados e cria usuários padrão sempre que o módulo
 # for importado. Isso garante que as rotas e recursos funcionem
 # corretamente em diferentes ambientes (por exemplo, durante os testes),
 # sem exigir a execução manual de scripts de inicialização.
 with app.app_context():
-    db.create_all()
-    # Tenta ajustar tipos em MySQL antes de criar usuários padrão
-    try:
-        run_simple_migrations()
-    except Exception as _e:
-        print(f"Aviso: migração inicial falhou: {_e}")
-    create_default_user()
-    # Garantir que o admin existente tenha privilégio
-    backfill_admin_flag()
+    if not NO_DB_CONFIG:
+        db.create_all()
+        # Tenta ajustar tipos em MySQL antes de criar usuários padrão
+        try:
+            run_simple_migrations()
+        except Exception as _e:
+            print(f"Aviso: migração inicial falhou: {_e}")
+        create_default_user()
+        # Garantir que o admin existente tenha privilégio
+        backfill_admin_flag()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

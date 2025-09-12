@@ -6,7 +6,30 @@ let viewMode = 'grid'; // grid ou list
 let selectedItems = [];
 
 // Inicialização
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Primeiro, verificar se estamos em modo de setup (sem DB)
+    try {
+        const resp = await fetch('/api/setup/status');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.mode === 'setup') {
+                showSetup();
+                // Preencher presets, se houver
+                const p = data.preset || {};
+                if (p) {
+                    if (p.host) document.getElementById('setup-host').value = p.host;
+                    if (p.port) document.getElementById('setup-port').value = p.port;
+                    if (p.db) document.getElementById('setup-db').value = p.db;
+                    if (p.user) document.getElementById('setup-user').value = p.user;
+                }
+                bindSetupHandlers();
+                return; // não seguir fluxo de login/dashboard
+            }
+        }
+    } catch (e) {
+        // segue fluxo normal
+    }
+
     if (authToken) {
         showDashboard();
     } else {
@@ -176,6 +199,12 @@ function showRegister() {
     document.getElementById('register-screen').classList.add('active');
 }
 
+function showSetup() {
+    hideAllScreens();
+    const el = document.getElementById('setup-screen');
+    if (el) el.classList.add('active');
+}
+
 function showDashboard() {
     hideAllScreens();
     document.getElementById('dashboard-screen').classList.add('active');
@@ -190,6 +219,85 @@ function hideAllScreens() {
     document.querySelectorAll('.screen').forEach(screen => {
         screen.classList.remove('active');
     });
+}
+
+// ===== Setup Handlers =====
+function bindSetupHandlers() {
+    const form = document.getElementById('setup-form');
+    const testBtn = document.getElementById('setup-test-btn');
+    if (form && !form.__bound) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = collectSetupPayload();
+            const statusEl = document.getElementById('setup-status');
+            statusEl.textContent = 'Aplicando configuração...';
+            try {
+                const resp = await fetch('/api/setup/db', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json().catch(()=>({}));
+                if (!resp.ok || data.error) {
+                    statusEl.textContent = 'Erro: ' + (data.error || 'Falha desconhecida');
+                    return;
+                }
+                statusEl.textContent = 'Configuração aplicada! Carregando login...';
+                setTimeout(() => {
+                    // Após aplicar, mostrar tela de login
+                    showLogin();
+                }, 1000);
+            } catch (e) {
+                statusEl.textContent = 'Erro: ' + e.message;
+            }
+        });
+        form.__bound = true;
+    }
+    if (testBtn && !testBtn.__bound) {
+        testBtn.addEventListener('click', async () => {
+            const payload = collectSetupPayload();
+            const statusEl = document.getElementById('setup-status');
+            statusEl.textContent = 'Testando conexão...';
+            try {
+                const resp = await fetch('/api/setup/db/ping', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json().catch(()=>({}));
+                if (data.status === 'ok') {
+                    statusEl.textContent = 'Conexão OK';
+                } else {
+                    statusEl.textContent = 'Erro: ' + (data.error || 'Falha na conexão');
+                }
+            } catch (e) {
+                statusEl.textContent = 'Erro: ' + e.message;
+            }
+        });
+        testBtn.__bound = true;
+    }
+}
+
+function collectSetupPayload() {
+    const host = document.getElementById('setup-host').value.trim();
+    const port = document.getElementById('setup-port').value.trim() || '3306';
+    const db = document.getElementById('setup-db').value.trim();
+    const user = document.getElementById('setup-user').value.trim();
+    const password = document.getElementById('setup-pass').value;
+    const payload = { host, port, db, user };
+    if (password !== '') payload.password = password;
+    // Dados do primeiro usuário (opcionais)
+    const fUser = (document.getElementById('first-username')?.value || '').trim();
+    const fEmail = (document.getElementById('first-email')?.value || '').trim();
+    const fPass = (document.getElementById('first-password')?.value || '').trim();
+    const fAdmin = !!document.getElementById('first-is-admin')?.checked;
+    if (fUser && fEmail && fPass) {
+        payload.first_username = fUser;
+        payload.first_email = fEmail;
+        payload.first_password = fPass;
+        payload.first_is_admin = fAdmin;
+    }
+    return payload;
 }
 
 // Navegação de seções
