@@ -1145,6 +1145,61 @@ def download_file(file_id):
     
     return send_file(file.file_path, as_attachment=True, download_name=file.original_name)
 
+@app.route('/api/files/<int:file_id>/rename', methods=['POST'])
+@jwt_required()
+def rename_file(file_id):
+    """Renomeia um arquivo do usuário, ajustando o nome no disco e no banco.
+    Espera JSON { new_name: "novo_nome.ext" }
+    """
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
+    user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+    new_name = (data.get('new_name') or '').strip()
+    if not new_name:
+        return jsonify({'error': 'Novo nome é obrigatório'}), 400
+
+    file = File.query.filter_by(id=file_id, user_id=user_id).first()
+    if not file:
+        return jsonify({'error': 'Arquivo não encontrado'}), 404
+
+    # Sanitizar nome e preservar extensão se ausente
+    base_dir = os.path.dirname(file.file_path)
+    # Se não vier extensão, manter a extensão atual
+    import os as _os
+    _old_base, _old_ext = _os.path.splitext(file.original_name)
+    _new_base, _new_ext = _os.path.splitext(new_name)
+    if not _new_ext and _old_ext:
+        new_name = f"{_new_base}{_old_ext}"
+    safe_name = secure_filename(new_name)
+    if not safe_name:
+        return jsonify({'error': 'Nome inválido'}), 400
+
+    # Evitar colisão
+    target_path = os.path.join(base_dir, safe_name)
+    counter = 1
+    name_root, name_ext = os.path.splitext(safe_name)
+    while os.path.exists(target_path) and os.path.abspath(target_path) != os.path.abspath(file.file_path):
+        safe_name = f"{name_root}_{counter}{name_ext}"
+        target_path = os.path.join(base_dir, safe_name)
+        counter += 1
+
+    try:
+        # Renomear no disco
+        os.rename(file.file_path, target_path)
+        # Atualizar no banco
+        file.file_path = target_path
+        file.filename = safe_name
+        file.original_name = safe_name
+        file.updated_at = datetime.utcnow()
+        db.session.commit()
+        # Log
+        log_activity(user_id, 'rename', 'file', file.id, safe_name)
+        return jsonify({'message': 'Arquivo renomeado com sucesso', 'filename': safe_name}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Falha ao renomear: {str(e)}'}), 500
+
 @app.route('/api/delete/<int:file_id>', methods=['DELETE'])
 @jwt_required()
 def delete_file(file_id):

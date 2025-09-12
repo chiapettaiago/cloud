@@ -83,6 +83,9 @@ function setupEventListeners() {
     // Context menu
     document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('click', hideContextMenu);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') hideContextMenu();
+    });
     
     // Fechar dropdown do usuário ao clicar fora
     document.addEventListener('click', function(e) {
@@ -1172,8 +1175,61 @@ async function createShare() {
 
 // Context menu e menu de usuário
 function handleContextMenu(e) {
-    // Implementar menu de contexto básico (opcional)
-    // Por ora, deixar como no-op para não bloquear
+    const card = e.target.closest('.file-card, .folder-card');
+    const menu = document.getElementById('context-menu');
+    if (!menu) return; // sem menu definido
+
+    if (!card) {
+        // Clique direito fora dos cards: esconder e deixar menu padrão
+        hideContextMenu();
+        return; // permitir menu do navegador fora dos cards
+    }
+
+    e.preventDefault();
+
+    // Definir contexto
+    const isFile = card.classList.contains('file-card');
+    const ctx = {
+        type: isFile ? 'file' : 'folder',
+        id: isFile ? Number(card.dataset.fileId) : Number(card.dataset.folderId),
+        name: isFile ? card.dataset.fileName : card.dataset.folderName,
+        data: null
+    };
+    try {
+        if (isFile && card.dataset.fileData) ctx.data = JSON.parse(card.dataset.fileData);
+    } catch (_) {}
+    window.__contextItem = ctx;
+
+    // Selecionar visualmente
+    document.querySelectorAll('.file-card.selected, .folder-card.selected').forEach(el => el.classList.remove('selected'));
+    card.classList.add('selected');
+
+    // Ajustar visibilidade dos itens do menu conforme tipo
+    const show = (sel, visible) => {
+        const el = menu.querySelector(sel);
+        if (el) el.style.display = visible ? 'flex' : 'none';
+    };
+    const isText = ctx.type === 'file' && ctx.name && isTextFile(ctx.name);
+    // Para pastas: ocultar download/editar/renomear/excluir se não houver backend correspondente
+    const isFolder = ctx.type === 'folder';
+    show('[data-action="preview"]', true); // Visualizar: arquivo = preview; pasta = abrir
+    show('[data-action="download"]', !isFolder);
+    show('[data-action="share"]', true);
+    show('[data-action="edit"]', !isFolder && isText);
+    show('[data-action="rename"]', !isFolder); // renome de pasta não implementado
+    show('[data-action="delete"]', !isFolder); // excluir pasta não implementado
+
+    // Posicionar menu (evitar overflow)
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+    const rect = { w: 200, h: 240 }; // aproximado do menu
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + rect.w > viewportW) x = viewportW - rect.w - 10;
+    if (y + rect.h > viewportH) y = viewportH - rect.h - 10;
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.classList.remove('d-none');
 }
 
 function hideContextMenu() {
@@ -1644,19 +1700,87 @@ function showFileOptions(id) {
 
 // Context menu functions
 function previewSelectedFile() {
-    // Implementar quando tiver seleção múltipla
+    const ctx = window.__contextItem;
+    if (!ctx) return;
+    hideContextMenu();
+    if (ctx.type === 'file') {
+        previewFile(ctx.id);
+    } else if (ctx.type === 'folder') {
+        navigateToFolder(ctx.id);
+    }
 }
 
 function editSelectedFile() {
-    // Implementar quando tiver seleção múltipla
+    const ctx = window.__contextItem;
+    if (!ctx || ctx.type !== 'file') return;
+    hideContextMenu();
+    if (ctx.name && isTextFile(ctx.name)) {
+        // Reaproveitar previewTextFile passando o data se existir, senão via lookup
+        if (ctx.data) {
+            previewTextFile(ctx.data);
+        } else {
+            previewFile(ctx.id);
+        }
+    } else {
+        showNotification('Apenas arquivos de texto podem ser editados.', 'info');
+    }
 }
 
-function renameFile() {
-    showNotification('Renomear ainda não implementado.', 'info');
+async function renameFile() {
+    const ctx = window.__contextItem;
+    if (!ctx) return;
+    hideContextMenu();
+    if (ctx.type !== 'file') {
+        showNotification('Renomear pasta não implementado.', 'info');
+        return;
+    }
+    const current = ctx.name || '';
+    const suggested = prompt('Novo nome do arquivo:', current);
+    if (suggested === null) return; // cancelado
+    const newName = suggested.trim();
+    if (!newName || newName === current) return;
+    try {
+        const resp = await fetch(`/api/files/${ctx.id}/rename`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ new_name: newName })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || 'Falha ao renomear');
+        showNotification('Arquivo renomeado com sucesso!', 'success');
+        loadFiles(currentFolderId);
+    } catch (e) {
+        showNotification(e.message, 'error');
+    }
 }
 
 function moveToTrash() {
-    showNotification('Lixeira ainda não implementada.', 'info');
+    const ctx = window.__contextItem;
+    if (!ctx) return;
+    hideContextMenu();
+    if (ctx.type === 'file') {
+        deleteFile(ctx.id);
+    } else {
+        showNotification('Excluir pasta não implementado.', 'info');
+    }
+}
+
+// Wrappers para itens do menu de contexto
+function contextDownload() {
+    const ctx = window.__contextItem;
+    if (!ctx || ctx.type !== 'file') return;
+    hideContextMenu();
+    downloadFile(ctx.id);
+}
+
+function contextShare() {
+    const ctx = window.__contextItem;
+    if (!ctx) return;
+    hideContextMenu();
+    showShareModal(ctx.id, ctx.type);
 }
 
 // Inicialização completa quando a página carregar

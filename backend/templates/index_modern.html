@@ -723,27 +723,27 @@
 
     <!-- Menu de contexto -->
     <div id="context-menu" class="context-menu d-none">
-        <div class="context-menu-item" onclick="previewSelectedFile()">
+        <div class="context-menu-item" data-action="preview" onclick="previewSelectedFile()">
             <i class="fas fa-eye"></i>
             Visualizar
         </div>
-        <div class="context-menu-item" onclick="downloadFile()">
+        <div class="context-menu-item" data-action="download" onclick="contextDownload()">
             <i class="fas fa-download"></i>
             Download
         </div>
-        <div class="context-menu-item" onclick="showShareModal()">
+        <div class="context-menu-item" data-action="share" onclick="contextShare()">
             <i class="fas fa-share-alt"></i>
             Compartilhar
         </div>
-        <div class="context-menu-item" onclick="editSelectedFile()">
+        <div class="context-menu-item" data-action="edit" onclick="editSelectedFile()">
             <i class="fas fa-edit"></i>
             Editar
         </div>
-        <div class="context-menu-item" onclick="renameFile()">
+        <div class="context-menu-item" data-action="rename" onclick="renameFile()">
             <i class="fas fa-signature"></i>
             Renomear
         </div>
-        <div class="context-menu-item" onclick="moveToTrash()">
+        <div class="context-menu-item" data-action="delete" onclick="moveToTrash()">
             <i class="fas fa-trash"></i>
             Excluir
         </div>

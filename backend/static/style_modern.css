@@ -589,29 +589,34 @@ body {
     transition: var(--transition);
 }
 
-.file-card:hover .file-actions,
-.folder-card:hover .file-actions {
-    opacity: 1;
-}
+/* Desativa exibição de botões de ação no hover (substituído por menu de contexto) */
+.file-card .file-actions,
+.folder-card .file-actions { display: none !important; }
 
 .action-btn {
-    background: rgba(0, 0, 0, 0.1);
-    border: none;
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-    margin-left: 0.25rem;
+    display: none;
 }
 
-.action-btn:hover {
-    background: var(--primary-color);
-    color: var(--light-color);
-    transform: scale(1.1);
+/* Menu de contexto */
+.context-menu {
+    position: fixed;
+    background: var(--light-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    box-shadow: var(--shadow-hover);
+    z-index: 10002;
+    min-width: 220px;
+}
+.context-menu .context-menu-item {
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.context-menu .context-menu-item:hover {
+    background: var(--secondary-color);
 }
 
 /* Toolbar moderno */
