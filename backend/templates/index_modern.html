@@ -202,6 +202,11 @@
                             <h1 class="header-title" id="section-title">Meus Arquivos</h1>
                         </div>
                         <div class="header-actions">
+                            <!-- Indicador de status do token -->
+                            <div class="token-status" id="token-status" style="display: none;">
+                                <i class="fas fa-sync-alt fa-spin"></i>
+                                <span>Renovando sessão...</span>
+                            </div>
                             <div class="user-menu-container">
                                 <div class="user-menu" onclick="toggleUserMenu()">
                                     <i class="fas fa-user-circle"></i>
@@ -239,6 +244,22 @@
                                     <i class="fas fa-home"></i> Início
                                 </a>
                             </nav>
+                        </div>
+
+                        <!-- Informações da Cota do Usuário -->
+                        <div class="user-quota-info" id="user-quota-info">
+                            <div class="quota-container">
+                                <div class="quota-text">
+                                    <i class="fas fa-hdd"></i>
+                                    <span id="quota-usage-text">Carregando...</span>
+                                </div>
+                                <div class="quota-bar-container">
+                                    <div class="quota-bar">
+                                        <div class="quota-bar-fill" id="quota-bar-fill" style="width: 0%"></div>
+                                    </div>
+                                    <div class="quota-percentage" id="quota-percentage">0%</div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Toolbar -->

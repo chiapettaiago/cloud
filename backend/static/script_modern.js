@@ -5,6 +5,12 @@ let currentUser = null;
 let viewMode = 'grid'; // grid ou list
 let selectedItems = [];
 
+// Variáveis para controle de token
+let tokenRefreshTimer = null;
+let lastActivity = Date.now();
+const TOKEN_REFRESH_INTERVAL = 8 * 60 * 1000; // 8 minutos (antes dos 10 minutos de expiração)
+const ACTIVITY_CHECK_INTERVAL = 30 * 1000; // Verifica atividade a cada 30 segundos
+
 // Inicialização
 document.addEventListener('DOMContentLoaded', async function() {
     // Primeiro, verificar se estamos em modo de setup (sem DB)
@@ -31,13 +37,193 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     if (authToken) {
-        showDashboard();
+        // Verificar se o token ainda é válido
+        const tokenValid = await validateToken();
+        if (tokenValid) {
+            showDashboard();
+            startTokenManagement();
+        } else {
+            handleTokenExpired();
+        }
     } else {
         showLogin();
     }
     
     setupEventListeners();
 });
+
+// === GERENCIAMENTO DE TOKEN JWT ===
+
+async function validateToken() {
+    if (!authToken) return false;
+    
+    try {
+        const response = await fetch('/api/user-info', {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function refreshToken() {
+    if (!authToken) return false;
+    
+    // Mostrar indicador de renovação
+    showTokenStatus(true);
+    
+    try {
+        const response = await fetch('/api/refresh-token', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            authToken = data.access_token;
+            localStorage.setItem('authToken', authToken);
+            console.log('Token renovado automaticamente');
+            return true;
+        } else {
+            console.log('Falha ao renovar token:', response.status);
+            return false;
+        }
+    } catch (error) {
+        console.error('Erro ao renovar token:', error);
+        return false;
+    } finally {
+        // Esconder indicador após um pequeno delay
+        setTimeout(() => showTokenStatus(false), 1000);
+    }
+}
+
+function showTokenStatus(show) {
+    const tokenStatus = document.getElementById('token-status');
+    if (tokenStatus) {
+        tokenStatus.style.display = show ? 'flex' : 'none';
+    }
+}
+
+function startTokenManagement() {
+    // Configurar renovação automática do token
+    tokenRefreshTimer = setInterval(async () => {
+        const renewed = await refreshToken();
+        if (!renewed) {
+            handleTokenExpired();
+        }
+    }, TOKEN_REFRESH_INTERVAL);
+    
+    // Monitorar atividade do usuário
+    startActivityMonitoring();
+}
+
+function stopTokenManagement() {
+    if (tokenRefreshTimer) {
+        clearInterval(tokenRefreshTimer);
+        tokenRefreshTimer = null;
+    }
+    stopActivityMonitoring();
+}
+
+function startActivityMonitoring() {
+    // Registrar atividade em eventos do usuário
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    activityEvents.forEach(event => {
+        document.addEventListener(event, updateLastActivity, true);
+    });
+    
+    // Verificar inatividade periodicamente
+    setInterval(checkInactivity, ACTIVITY_CHECK_INTERVAL);
+}
+
+function stopActivityMonitoring() {
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    activityEvents.forEach(event => {
+        document.removeEventListener(event, updateLastActivity, true);
+    });
+}
+
+function updateLastActivity() {
+    lastActivity = Date.now();
+}
+
+function checkInactivity() {
+    const inactiveTime = Date.now() - lastActivity;
+    const maxInactiveTime = 15 * 60 * 1000; // 15 minutos de inatividade
+    
+    if (inactiveTime > maxInactiveTime && authToken) {
+        handleTokenExpired('Sessão expirada por inatividade');
+    }
+}
+
+function handleTokenExpired(message = 'Sessão expirada por segurança') {
+    stopTokenManagement();
+    
+    // Limpar dados de autenticação
+    localStorage.removeItem('authToken');
+    authToken = null;
+    currentUser = null;
+    currentFolderId = 0;
+    selectedItems = [];
+    
+    // Mostrar notificação
+    showNotification(message, 'warning');
+    
+    // Redirecionar para login após um pequeno delay
+    setTimeout(() => {
+        showLogin();
+    }, 1500);
+}
+
+// === INTERCEPTADOR DE REQUISIÇÕES ===
+
+// Função auxiliar para fazer requisições com tratamento automático de token expirado
+async function makeAuthenticatedRequest(url, options = {}) {
+    if (!authToken) {
+        throw new Error('Token de autenticação não encontrado');
+    }
+    
+    // Adicionar cabeçalho de autenticação
+    const headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${authToken}`
+    };
+    
+    const requestOptions = {
+        ...options,
+        headers
+    };
+    
+    try {
+        const response = await fetch(url, requestOptions);
+        
+        // Se token expirou (401), tentar renovar uma vez
+        if (response.status === 401) {
+            const renewed = await refreshToken();
+            if (renewed) {
+                // Tentar novamente com o token renovado
+                requestOptions.headers['Authorization'] = `Bearer ${authToken}`;
+                return await fetch(url, requestOptions);
+            } else {
+                // Não foi possível renovar, fazer logout
+                handleTokenExpired('Token expirado - faça login novamente');
+                throw new Error('Token expirado');
+            }
+        }
+        
+        return response;
+    } catch (error) {
+        throw error;
+    }
+}
 
 // Event Listeners
 function setupEventListeners() {
@@ -166,7 +352,10 @@ async function handleLogin(e) {
             authToken = data.access_token;
             currentUser = { id: data.user_id, username: data.username };
             localStorage.setItem('authToken', authToken);
+            
             showDashboard();
+            startTokenManagement(); // Iniciar gerenciamento de tokens
+            showNotification('Login realizado com sucesso!', 'success');
         } else {
             const error = await response.json();
             showNotification('Erro no login: ' + (error.error || 'Credenciais inválidas'), 'error');
@@ -212,6 +401,9 @@ function logout() {
     
     // Confirmar logout
     if (confirm('Tem certeza que deseja sair?')) {
+        // Parar gerenciamento de tokens
+        stopTokenManagement();
+        
         // Limpar dados locais
         localStorage.removeItem('authToken');
         authToken = null;
@@ -385,6 +577,7 @@ function showSection(sectionName) {
     switch(sectionName) {
         case 'files':
             loadFiles(currentFolderId);
+            refreshUserQuota(); // Atualizar cota quando abrir a seção de arquivos
             break;
         case 'recent':
             loadRecentFiles();
@@ -410,11 +603,7 @@ function showSection(sectionName) {
 // Gerenciamento de arquivos e pastas
 async function loadFiles(folderId = 0) {
     try {
-        const response = await fetch(`/api/files?folder_id=${folderId}`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const response = await makeAuthenticatedRequest(`/api/files?folder_id=${folderId}`);
         
         if (response.ok) {
             const data = await response.json();
@@ -426,7 +615,9 @@ async function loadFiles(folderId = 0) {
             showNotification('Erro ao carregar arquivos', 'error');
         }
     } catch (error) {
-        showNotification('Erro de conexão: ' + error.message, 'error');
+        if (error.message !== 'Token expirado') {
+            showNotification('Erro de conexão: ' + error.message, 'error');
+        }
     }
 }
 
@@ -660,9 +851,10 @@ async function uploadFiles(files) {
         await uploadSingleFile(file, progressContainer);
     }
     
-    // Recarregar arquivos após upload
+    // Recarregar arquivos e atualizar cota após upload
     setTimeout(() => {
         loadFiles(currentFolderId);
+        refreshUserQuota();
         closeModal('upload-modal');
     }, 1000);
 }
@@ -862,11 +1054,7 @@ function refreshFiles() {
 // Download
 async function downloadFile(fileId) {
     try {
-        const response = await fetch(`/api/download/${fileId}`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const response = await makeAuthenticatedRequest(`/api/download/${fileId}`);
         
         if (response.ok) {
             const blob = await response.blob();
@@ -882,7 +1070,9 @@ async function downloadFile(fileId) {
             showNotification('Erro ao baixar arquivo', 'error');
         }
     } catch (error) {
-        showNotification('Erro de conexão: ' + error.message, 'error');
+        if (error.message !== 'Token expirado') {
+            showNotification('Erro de conexão: ' + error.message, 'error');
+        }
     }
 }
 
@@ -892,40 +1082,79 @@ async function deleteFile(fileId) {
         return;
     }
     try {
-        const response = await fetch(`/api/delete/${fileId}`, {
-            method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
+        const response = await makeAuthenticatedRequest(`/api/delete/${fileId}`, {
+            method: 'DELETE'
         });
+        
         if (response.ok) {
             showNotification('Arquivo excluído com sucesso', 'success');
             loadFiles(currentFolderId);
+            refreshUserQuota(); // Atualizar cota após exclusão
         } else {
             const err = await response.json().catch(() => ({}));
             showNotification('Erro ao excluir: ' + (err.error || response.statusText), 'error');
         }
     } catch (e) {
-        showNotification('Erro de conexão: ' + e.message, 'error');
+        if (e.message !== 'Token expirado') {
+            showNotification('Erro de conexão: ' + e.message, 'error');
+        }
     }
 }
 
 // Carregar outras seções
 async function loadUserInfo() {
     try {
-        const response = await fetch('/api/user-info', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const response = await makeAuthenticatedRequest('/api/user-info');
         
         if (response.ok) {
             const data = await response.json();
-            // Atualizar informações do usuário na interface
+            updateUserQuotaDisplay(data);
         }
     } catch (error) {
-        console.error('Erro ao carregar informações do usuário:', error);
+        if (error.message !== 'Token expirado') {
+            console.error('Erro ao carregar informações do usuário:', error);
+        }
     }
+}
+
+function updateUserQuotaDisplay(data) {
+    const quotaUsageText = document.getElementById('quota-usage-text');
+    const quotaBarFill = document.getElementById('quota-bar-fill');
+    const quotaPercentage = document.getElementById('quota-percentage');
+    
+    if (!quotaUsageText || !quotaBarFill || !quotaPercentage) {
+        return; // Elementos não encontrados
+    }
+    
+    // Calcular valores
+    const usedBytes = data.storage_used || 0;
+    const totalBytes = data.storage_quota || 1073741824; // 1GB padrão
+    const percentage = Math.min((usedBytes / totalBytes) * 100, 100);
+    
+    // Formatar tamanhos
+    const usedFormatted = formatFileSize(usedBytes);
+    const totalFormatted = formatFileSize(totalBytes);
+    
+    // Atualizar textos
+    quotaUsageText.textContent = `${usedFormatted} de ${totalFormatted} utilizados`;
+    quotaPercentage.textContent = `${percentage.toFixed(1)}%`;
+    
+    // Atualizar barra de progresso
+    quotaBarFill.style.width = `${percentage}%`;
+    
+    // Alterar cor da barra baseado no uso
+    if (percentage >= 90) {
+        quotaBarFill.style.background = 'linear-gradient(90deg, #dc3545, #c82333)'; // Vermelho
+    } else if (percentage >= 75) {
+        quotaBarFill.style.background = 'linear-gradient(90deg, #fd7e14, #e8590c)'; // Laranja
+    } else {
+        quotaBarFill.style.background = 'linear-gradient(90deg, #28a745, #20c997)'; // Verde
+    }
+}
+
+// Função para atualizar quota após upload ou exclusão
+function refreshUserQuota() {
+    loadUserInfo();
 }
 
 async function loadRecentFiles() {

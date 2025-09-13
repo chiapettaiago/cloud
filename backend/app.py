@@ -87,7 +87,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_recycle': 280
 }
 app.config['JWT_SECRET_KEY'] = 'jwt-secret-change-this'
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=10)  # Token expira em 10 minutos
 
 # Diretório base para armazenamento de arquivos
 UPLOAD_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'storage'))
@@ -966,6 +966,32 @@ def login():
         }), 200
     
     return jsonify({'error': 'Credenciais inválidas'}), 401
+
+@app.route('/api/refresh-token', methods=['POST'])
+@jwt_required()
+def refresh_token():
+    """Renova o token de acesso do usuário autenticado"""
+    if 'NO_DB_CONFIG' in globals() and NO_DB_CONFIG:
+        return jsonify({'error': 'Sistema em modo de configuração'}), 503
+    
+    try:
+        current_user_id = get_jwt_identity()
+        user = User.query.get(int(current_user_id))
+        
+        if not user:
+            return jsonify({'error': 'Usuário não encontrado'}), 404
+        
+        # Criar novo token
+        new_token = create_access_token(identity=str(user.id))
+        
+        return jsonify({
+            'access_token': new_token,
+            'user_id': user.id,
+            'username': user.username
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': 'Falha ao renovar token'}), 401
 
 @app.route('/api/upload', methods=['POST'])
 @jwt_required()
