@@ -98,6 +98,42 @@ db = SQLAlchemy(app)
 jwt = JWTManager(app)
 CORS(app)
 
+# Registrar filtros personalizados do Jinja2
+@app.template_filter('datetimeformat')
+def datetimeformat(value, format='%d/%m/%Y às %H:%M'):
+    """Formatar data/hora para exibição"""
+    try:
+        if value is None:
+            return "Data não disponível"
+        if hasattr(value, 'strftime'):
+            return value.strftime(format)
+        # Se for string ISO, tentar converter
+        if isinstance(value, str):
+            from datetime import datetime
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            return dt.strftime(format)
+        return str(value)
+    except (ValueError, AttributeError, TypeError):
+        return "Data não disponível"
+
+@app.template_filter('filesizeformat')
+def filesizeformat(bytes):
+    """Formatar tamanho de arquivo para exibição"""
+    try:
+        if bytes is None:
+            return "0 B"
+        bytes = float(bytes)
+        if bytes == 0:
+            return "0 B"
+        size_names = ["B", "KB", "MB", "GB", "TB"]
+        i = 0
+        while bytes >= 1024 and i < len(size_names) - 1:
+            bytes /= 1024.0
+            i += 1
+        return f"{bytes:.1f} {size_names[i]}"
+    except (ValueError, TypeError):
+        return "0 B"
+
 # Modelos do banco de dados
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1532,10 +1568,11 @@ def view_share(token):
     if share.file:
         resource = {
             'type': 'file',
+            'id': share.file.id,
             'name': share.file.original_name,
             'size': share.file.file_size,
             'mime_type': share.file.mime_type,
-            'created_at': share.file.created_at.isoformat(),
+            'created_at': share.file.created_at,
             'can_download': share.can_download,
             'is_streamable': is_streamable_file(share.file.mime_type)
         }
@@ -1548,13 +1585,15 @@ def view_share(token):
                 'name': file.original_name,
                 'size': file.file_size,
                 'mime_type': file.mime_type,
-                'created_at': file.created_at.isoformat()
+                'created_at': file.created_at
             })
         
         resource = {
             'type': 'folder',
+            'id': share.folder.id,
             'name': share.folder.name,
             'files': files_list,
+            'created_at': share.folder.created_at,
             'can_download': share.can_download
         }
     
