@@ -4,248 +4,555 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ share.name }} - Chiapetta Cloud</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_modern.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+        }
+        
         .share-container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 2rem auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 12px;
-            padding: 2rem;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 20px;
+            padding: 0;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            overflow: hidden;
         }
         
         .share-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
             text-align: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid #eee;
+            position: relative;
+        }
+        
+        .share-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+        }
+        
+        .share-header-content {
+            position: relative;
+            z-index: 1;
         }
         
         .share-header h1 {
-            color: #333;
-            margin-bottom: 0.5rem;
+            margin: 0 0 1rem 0;
+            font-size: 2rem;
+            font-weight: 700;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            word-break: break-word;
         }
         
-        .share-header .share-info {
-            color: #666;
+        .share-header .file-type-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .share-info {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            padding: 1rem;
+            border-radius: 15px;
+            margin-top: 1rem;
             font-size: 0.9rem;
+            display: inline-block;
         }
         
+        .share-content {
+            padding: 2rem;
+        }
+        
+        /* Preview específico para diferentes tipos de arquivo */
         .file-preview {
             text-align: center;
             margin: 2rem 0;
-        }
-        
-        .file-icon {
-            font-size: 4rem;
-            color: #667eea;
-            margin-bottom: 1rem;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .media-player {
             width: 100%;
-            max-width: 600px;
-            margin: 0 auto;
+            max-width: 100%;
+            background: #f8f9fa;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
         
         .media-player video,
         .media-player audio {
             width: 100%;
-            border-radius: 8px;
+            border-radius: 15px;
+            max-height: 70vh;
         }
         
         .media-player img {
             max-width: 100%;
+            max-height: 70vh;
             height: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            object-fit: contain;
         }
         
-        .file-actions {
+        .media-player iframe {
+            width: 100%;
+            height: 70vh;
+            min-height: 500px;
+            border: none;
+            border-radius: 15px;
+        }
+        
+        .preview-placeholder {
+            padding: 3rem;
             text-align: center;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 2px dashed #dee2e6;
+        }
+        
+        .preview-placeholder i {
+            font-size: 4rem;
+            color: #6c757d;
+            margin-bottom: 1rem;
+        }
+        
+        .preview-placeholder h3 {
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+        
+        .preview-placeholder p {
+            color: #6c757d;
+            margin: 0;
+        }
+        
+        /* Ações */
+        .file-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
             margin-top: 2rem;
+            flex-wrap: wrap;
         }
         
         .btn {
-            display: inline-block;
-            padding: 12px 24px;
-            margin: 0 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 1.5rem;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             text-decoration: none;
-            border-radius: 8px;
-            transition: transform 0.2s;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         }
         
         .btn:hover {
             transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
         }
         
         .btn-secondary {
-            background: #6c757d;
+            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
         }
         
+        .btn-secondary:hover {
+            box-shadow: 0 8px 25px rgba(108, 117, 125, 0.4);
+        }
+        
+        /* Conteúdo de pasta */
         .folder-contents {
             margin-top: 2rem;
         }
         
-        .file-list {
-            list-style: none;
-            padding: 0;
-        }
-        
-        .file-item {
+        .folder-contents h3 {
+            color: #495057;
+            margin-bottom: 1.5rem;
+            font-size: 1.3rem;
             display: flex;
             align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
+            gap: 0.5rem;
         }
         
-        .file-item:last-child {
-            border-bottom: none;
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
         }
         
-        .file-item i {
-            margin-right: 10px;
-            width: 20px;
+        .file-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid #e9ecef;
+        }
+        
+        .file-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+        
+        .file-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .file-card-icon {
+            font-size: 1.5rem;
             color: #667eea;
         }
         
-        .file-item .file-size {
-            margin-left: auto;
-            color: #666;
+        .file-card-name {
+            font-weight: 600;
+            color: #495057;
             font-size: 0.9rem;
+            flex: 1;
+            word-break: break-word;
+        }
+        
+        .file-card-size {
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+        
+        /* Footer */
+        .share-footer {
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid #e9ecef;
+            background: #f8f9fa;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        .share-footer i {
+            color: #667eea;
+            margin-right: 0.5rem;
+        }
+        
+        /* Responsividade */
+        @media (max-width: 768px) {
+            .share-container {
+                margin: 1rem;
+                border-radius: 15px;
+            }
+            
+            .share-header {
+                padding: 1.5rem 1rem;
+            }
+            
+            .share-header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .share-content {
+                padding: 1.5rem;
+            }
+            
+            .file-actions {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 300px;
+                justify-content: center;
+            }
+            
+            .file-grid {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+            
+            .media-player iframe {
+                height: 50vh;
+                min-height: 400px;
+            }
+            
+            .media-player img {
+                max-height: 50vh;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .share-container {
+                margin: 0.5rem;
+            }
+            
+            .share-header {
+                padding: 1rem;
+            }
+            
+            .share-content {
+                padding: 1rem;
+            }
+            
+            .media-player iframe {
+                height: 40vh;
+                min-height: 300px;
+            }
+        }
+        
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Melhorias de acessibilidade */
+        .btn:focus {
+            outline: 3px solid rgba(102, 126, 234, 0.5);
+            outline-offset: 2px;
+        }
+        
+        .file-card:focus {
+            outline: 2px solid rgba(102, 126, 234, 0.5);
+            outline-offset: 2px;
         }
     </style>
 </head>
-<body style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
+<body>
     <div class="share-container">
         <div class="share-header">
-            <h1><i class="fas fa-{{ 'folder' if share.type == 'folder' else 'file' }}"></i> {{ share.name }}</h1>
-            <div class="share-info">
-                {% if share.type == 'file' %}
-                    Arquivo compartilhado • {{ share.size | filesizeformat }} • {{ share.created_at | datetimeformat }}
-                {% else %}
-                    Pasta compartilhada • {{ share.files | length }} arquivo(s) • {{ share.created_at | datetimeformat }}
-                {% endif %}
+            <div class="share-header-content">
+                <div class="file-type-icon">
+                    <i class="fas fa-{{ 'folder' if share.type == 'folder' else 'file' }}"></i>
+                </div>
+                <h1>{{ share.name }}</h1>
+                <div class="share-info">
+                    <i class="fas fa-info-circle"></i>
+                    {% if share.type == 'file' %}
+                        Arquivo compartilhado • {{ share.size | filesizeformat }} • {{ share.created_at | datetimeformat }}
+                    {% else %}
+                        Pasta compartilhada • {{ share.files | length }} arquivo(s) • {{ share.created_at | datetimeformat }}
+                    {% endif %}
+                </div>
             </div>
         </div>
         
-        {% if share.type == 'file' %}
-            <div class="file-preview">
-                {% if share.is_streamable %}
-                    <div class="media-player">
-                        {% if share.mime_type.startswith('video/') %}
-                            <video controls>
-                                <source src="/api/stream/{{ share.id }}?token={{ token }}" type="{{ share.mime_type }}">
-                                Seu navegador não suporta o elemento de vídeo.
-                            </video>
-                        {% elif share.mime_type.startswith('audio/') %}
-                            <audio controls>
-                                <source src="/api/stream/{{ share.id }}?token={{ token }}" type="{{ share.mime_type }}">
-                                Seu navegador não suporta o elemento de áudio.
-                            </audio>
-                        {% elif share.mime_type.startswith('image/') %}
-                            <img src="/api/stream/{{ share.id }}?token={{ token }}" alt="{{ share.name }}">
-                        {% elif share.mime_type == 'application/pdf' %}
-                            <iframe src="/api/stream/{{ share.id }}?token={{ token }}" width="100%" height="600px" style="border: none; border-radius: 8px;"></iframe>
-                        {% else %}
-                            <div class="file-icon">
-                                <i class="fas fa-file-alt"></i>
-                            </div>
-                            <p>Visualização não disponível para este tipo de arquivo</p>
-                        {% endif %}
-                    </div>
-                {% else %}
-                    <div class="file-icon">
-                        <i class="fas fa-file"></i>
-                    </div>
-                {% endif %}
-            </div>
-            
-            <div class="file-actions">
-                {% if share.can_download %}
-                    <a href="/api/stream/{{ share.id }}?token={{ token }}&download=1" class="btn" download>
-                        <i class="fas fa-download"></i> Baixar
-                    </a>
-                {% endif %}
+        <div class="share-content">
+            {% if share.type == 'file' %}
+                <div class="file-preview">
+                    {% if share.is_streamable %}
+                        <div class="media-player">
+                            {% if share.mime_type.startswith('video/') %}
+                                <video controls preload="metadata" poster="">
+                                    <source src="/api/stream/{{ share.id }}?token={{ token }}" type="{{ share.mime_type }}">
+                                    <p>Seu navegador não suporta o elemento de vídeo. <a href="/api/stream/{{ share.id }}?token={{ token }}&download=1">Clique aqui para baixar.</a></p>
+                                </video>
+                            {% elif share.mime_type.startswith('audio/') %}
+                                <audio controls preload="metadata">
+                                    <source src="/api/stream/{{ share.id }}?token={{ token }}" type="{{ share.mime_type }}">
+                                    <p>Seu navegador não suporta o elemento de áudio. <a href="/api/stream/{{ share.id }}?token={{ token }}&download=1">Clique aqui para baixar.</a></p>
+                                </audio>
+                            {% elif share.mime_type.startswith('image/') %}
+                                <img src="/api/stream/{{ share.id }}?token={{ token }}" 
+                                     alt="{{ share.name }}"
+                                     loading="lazy"
+                                     onerror="this.style.display='none'; document.getElementById('img-error').style.display='block';">
+                                <div id="img-error" style="display:none;" class="preview-placeholder">
+                                    <i class="fas fa-image"></i>
+                                    <h3>Erro ao carregar imagem</h3>
+                                    <p>Não foi possível exibir a imagem</p>
+                                </div>
+                            {% elif share.mime_type == 'application/pdf' %}
+                                <iframe src="/api/stream/{{ share.id }}?token={{ token }}" 
+                                        title="{{ share.name }}"
+                                        loading="lazy">
+                                    <p>Seu navegador não suporta visualização de PDF. <a href="/api/stream/{{ share.id }}?token={{ token }}&download=1">Clique aqui para baixar.</a></p>
+                                </iframe>
+                            {% else %}
+                                <div class="preview-placeholder">
+                                    <i class="fas fa-file-alt"></i>
+                                    <h3>Visualização não disponível</h3>
+                                    <p>Este tipo de arquivo não pode ser visualizado no navegador</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="preview-placeholder">
+                            <i class="fas fa-file"></i>
+                            <h3>{{ share.name }}</h3>
+                            <p>Clique em "Baixar" para obter o arquivo</p>
+                        </div>
+                    {% endif %}
+                </div>
                 
-                {% if share.is_streamable %}
-                    <a href="/api/stream/{{ share.id }}?token={{ token }}" class="btn btn-secondary" target="_blank">
-                        <i class="fas fa-external-link-alt"></i> Abrir em nova aba
-                    </a>
-                {% endif %}
-            </div>
-        {% else %}
-            <div class="folder-contents">
-                <h3>Conteúdo da pasta:</h3>
-                {% if share.files %}
-                    <ul class="file-list">
-                        {% for file in share.files %}
-                            <li class="file-item">
-                                <i class="fas fa-file"></i>
-                                <span>{{ file.name }}</span>
-                                <span class="file-size">{{ file.size | filesizeformat }}</span>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                    <p>Esta pasta está vazia.</p>
-                {% endif %}
-                
-                {% if share.can_download %}
-                    <div class="file-actions">
-                        <button class="btn" onclick="downloadFolder()">
-                            <i class="fas fa-download"></i> Baixar pasta
-                        </button>
-                    </div>
-                {% endif %}
-            </div>
-        {% endif %}
+                <div class="file-actions">
+                    {% if share.can_download %}
+                        <a href="/api/stream/{{ share.id }}?token={{ token }}&download=1" class="btn" download>
+                            <i class="fas fa-download"></i> Baixar Arquivo
+                        </a>
+                    {% endif %}
+                    
+                    {% if share.is_streamable and share.mime_type.startswith(('image/', 'video/', 'audio/')) %}
+                        <a href="/api/stream/{{ share.id }}?token={{ token }}" class="btn btn-secondary" target="_blank" rel="noopener">
+                            <i class="fas fa-external-link-alt"></i> Abrir em Nova Aba
+                        </a>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="folder-contents">
+                    <h3><i class="fas fa-folder-open"></i> Conteúdo da pasta</h3>
+                    {% if share.files %}
+                        <div class="file-grid">
+                            {% for file in share.files %}
+                                <div class="file-card">
+                                    <div class="file-card-header">
+                                        <div class="file-card-icon">
+                                            <i class="fas fa-file{% if file.mime_type %}
+                                                {%- if file.mime_type.startswith('image/') %}-image
+                                                {%- elif file.mime_type.startswith('video/') %}-video
+                                                {%- elif file.mime_type.startswith('audio/') %}-audio
+                                                {%- elif 'pdf' in file.mime_type %}-pdf
+                                                {%- elif file.mime_type.startswith('text/') %}-alt
+                                                {%- elif 'zip' in file.mime_type or 'rar' in file.mime_type %}-archive
+                                                {%- endif %}
+                                            {% endif %}"></i>
+                                        </div>
+                                        <div class="file-card-name">{{ file.name }}</div>
+                                    </div>
+                                    <div class="file-card-size">{{ file.size | filesizeformat }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="preview-placeholder">
+                            <i class="fas fa-folder-open"></i>
+                            <h3>Pasta vazia</h3>
+                            <p>Esta pasta não contém arquivos</p>
+                        </div>
+                    {% endif %}
+                    
+                    {% if share.can_download and share.files %}
+                        <div class="file-actions">
+                            <button class="btn" onclick="downloadFolder()" disabled>
+                                <i class="fas fa-download"></i> Baixar Pasta
+                                <small style="display: block; font-size: 0.7rem; opacity: 0.8;">(Em breve)</small>
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
         
-        <div style="text-align: center; margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #eee;">
-            <p style="color: #666; font-size: 0.9rem;">
-                <i class="fas fa-cloud"></i> Compartilhado via Chiapetta Cloud
-            </p>
+        <div class="share-footer">
+            <i class="fas fa-cloud"></i> Compartilhado via Chiapetta Cloud
         </div>
     </div>
     
     <script>
-        // Filtros para formatação (simulados via JavaScript)
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-        
-        function formatDateTime(dateString) {
-            return new Date(dateString).toLocaleDateString('pt-BR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-        
-        function downloadFolder() {
-            alert('Download de pastas será implementado em breve!');
-        }
-        
-        // Atualizar tamanhos de arquivo
+        // Melhorias de UX e funcionalidades
         document.addEventListener('DOMContentLoaded', function() {
-            const fileSizes = document.querySelectorAll('.file-size');
-            fileSizes.forEach(el => {
-                const size = parseInt(el.textContent);
-                if (!isNaN(size)) {
-                    el.textContent = formatFileSize(size);
-                }
+            // Lazy loading para mídia
+            const mediaElements = document.querySelectorAll('video, audio, img, iframe');
+            mediaElements.forEach(element => {
+                element.addEventListener('loadstart', function() {
+                    this.style.opacity = '0.5';
+                });
+                element.addEventListener('loadeddata', function() {
+                    this.style.opacity = '1';
+                });
+                element.addEventListener('error', function() {
+                    console.error('Erro ao carregar mídia:', this.src);
+                });
+            });
+            
+            // Controle de qualidade para vídeos
+            const videos = document.querySelectorAll('video');
+            videos.forEach(video => {
+                video.addEventListener('loadedmetadata', function() {
+                    // Ajustar qualidade baseado na largura da tela
+                    if (window.innerWidth < 768) {
+                        this.style.maxHeight = '50vh';
+                    }
+                });
+            });
+            
+            // Zoom para imagens (clique para ampliar)
+            const images = document.querySelectorAll('.media-player img');
+            images.forEach(img => {
+                img.style.cursor = 'zoom-in';
+                img.addEventListener('click', function() {
+                    if (this.style.transform === 'scale(1.5)') {
+                        this.style.transform = 'scale(1)';
+                        this.style.cursor = 'zoom-in';
+                    } else {
+                        this.style.transform = 'scale(1.5)';
+                        this.style.cursor = 'zoom-out';
+                        this.style.transition = 'transform 0.3s ease';
+                    }
+                });
             });
         });
+        
+        function downloadFolder() {
+            // Funcionalidade para download de pasta (implementar futuramente)
+            alert('O download de pastas completas estará disponível em breve!\n\nPor enquanto, você pode baixar os arquivos individualmente.');
+        }
+        
+        // Service Worker para cache (opcional - melhorar performance)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(function(error) {
+                console.log('Service Worker não pôde ser registrado:', error);
+            });
+        }
+        
+        // Detectar se está sendo acessado via mobile para ajustar UX
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+            document.body.classList.add('mobile-device');
+            
+            // Ajustar controles de mídia para mobile
+            const videos = document.querySelectorAll('video');
+            videos.forEach(video => {
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+            });
+        }
     </script>
 </body>
 </html>
